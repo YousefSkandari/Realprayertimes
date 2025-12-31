@@ -330,16 +330,29 @@
       return;
     }
 
+    // Check permission state first (where supported)
+    let permissionState = null;
+    if (navigator.permissions && navigator.permissions.query) {
+      try {
+        const result = await navigator.permissions.query({ name: 'geolocation' });
+        permissionState = result.state;
+
+        // If permission was previously denied, show guidance
+        if (result.state === 'denied') {
+          showLocationPermissionHelp();
+          return;
+        }
+      } catch (e) {
+        // Permissions API not fully supported, continue with geolocation request
+        console.log('Permissions API not available, trying geolocation directly');
+      }
+    }
+
     setLocationLoading(true);
 
     try {
-      const position = await new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 300000 // 5 minutes
-        });
-      });
+      // Try with high accuracy first, fallback to low accuracy
+      const position = await getPositionWithFallback();
 
       const { latitude, longitude } = position.coords;
       state.location = { lat: latitude, lon: longitude };
@@ -368,17 +381,77 @@
       calculateAndDisplay();
       showToast('Location detected successfully', 'success');
     } catch (error) {
-      let message = 'Unable to detect location';
-      if (error.code === 1) {
-        message = 'Location permission denied. Please enable location access.';
-      } else if (error.code === 2) {
-        message = 'Location unavailable. Please try again.';
-      } else if (error.code === 3) {
-        message = 'Location request timed out. Please try again.';
-      }
-      showToast(message, 'error');
+      console.error('Geolocation error:', error);
+      handleGeolocationError(error);
     } finally {
       setLocationLoading(false);
+    }
+  }
+
+  function getPositionWithFallback() {
+    return new Promise((resolve, reject) => {
+      // First try with high accuracy (GPS)
+      const highAccuracyOptions = {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 60000
+      };
+
+      const lowAccuracyOptions = {
+        enableHighAccuracy: false,
+        timeout: 20000,
+        maximumAge: 300000
+      };
+
+      navigator.geolocation.getCurrentPosition(
+        resolve,
+        (error) => {
+          // If high accuracy fails with timeout, try low accuracy
+          if (error.code === 3) {
+            console.log('High accuracy timed out, trying low accuracy...');
+            navigator.geolocation.getCurrentPosition(resolve, reject, lowAccuracyOptions);
+          } else {
+            reject(error);
+          }
+        },
+        highAccuracyOptions
+      );
+    });
+  }
+
+  function handleGeolocationError(error) {
+    if (error.code === 1) {
+      // Permission denied
+      showLocationPermissionHelp();
+    } else if (error.code === 2) {
+      showToast('Location unavailable. Please check your device settings or try manual entry.', 'error');
+    } else if (error.code === 3) {
+      showToast('Location request timed out. Please try again or enter location manually.', 'error');
+    } else {
+      showToast('Unable to detect location. Please enter manually.', 'error');
+    }
+  }
+
+  function showLocationPermissionHelp() {
+    // Detect iOS
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
+    let message = 'Location access denied. ';
+
+    if (isIOS) {
+      message += 'Go to Settings > Safari > Location, or Settings > Privacy > Location Services to enable.';
+    } else if (isSafari) {
+      message += 'Click the "Aa" icon in the address bar > Website Settings > Location.';
+    } else {
+      message += 'Click the lock/info icon in your browser\'s address bar to enable location.';
+    }
+
+    showToast(message, 'error');
+
+    // Also expand manual input section as alternative
+    if (elements.manualInputSection.classList.contains('hidden')) {
+      toggleManualInput();
     }
   }
 
