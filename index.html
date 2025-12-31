@@ -514,6 +514,28 @@
     <!-- Toast notifications -->
     <div id="toast-container" class="fixed bottom-4 left-4 right-4 z-50 flex flex-col gap-2 pointer-events-none max-w-md mx-auto" aria-live="polite"></div>
 
+    <!-- Debug Panel -->
+    <section class="bg-white/5 backdrop-blur-sm rounded-2xl p-4 border border-white/10 mt-6" id="debug-section">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-sm font-medium text-white/60 uppercase tracking-wider">Debug Log</h2>
+        <button
+          id="clear-debug-btn"
+          type="button"
+          class="text-xs text-white/40 hover:text-white/60 transition-colors"
+          onclick="document.getElementById('debug-output').innerHTML = ''"
+        >
+          Clear
+        </button>
+      </div>
+      <div
+        id="debug-output"
+        class="bg-black/30 rounded-lg p-3 h-48 overflow-y-auto font-mono text-green-400 text-xs"
+      >
+        <div class="text-white/50">Tap "Auto-detect Location" to see debug output...</div>
+      </div>
+      <p class="text-xs text-white/40 mt-2">Copy the text above and share it to help diagnose location issues.</p>
+    </section>
+
   </main>
 
   <!-- Footer -->

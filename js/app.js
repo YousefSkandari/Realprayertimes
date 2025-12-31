@@ -334,35 +334,78 @@
 
   // ============ Location Services ============
 
+  // Debug logging function
+  function logDebug(message, data = null) {
+    const timestamp = new Date().toISOString();
+    const logEntry = `[${timestamp}] ${message}`;
+    console.log(logEntry, data || '');
+
+    // Also append to visible debug panel if it exists
+    const debugPanel = document.getElementById('debug-output');
+    if (debugPanel) {
+      const entry = document.createElement('div');
+      entry.className = 'text-xs mb-1';
+      entry.textContent = data ? `${message}: ${JSON.stringify(data)}` : message;
+      debugPanel.appendChild(entry);
+      debugPanel.scrollTop = debugPanel.scrollHeight;
+    }
+  }
+
   async function autoDetectLocation() {
+    logDebug('=== Starting location detection ===');
+    logDebug('Navigator.geolocation available', !!navigator.geolocation);
+    logDebug('User Agent', navigator.userAgent);
+    logDebug('Protocol', window.location.protocol);
+
     if (!navigator.geolocation) {
+      logDebug('ERROR: Geolocation not supported');
       showToast('Geolocation is not supported by your browser', 'error');
       return;
     }
 
     // Check permission state first (where supported)
-    let permissionState = null;
+    logDebug('Checking Permissions API availability', !!navigator.permissions);
+
     if (navigator.permissions && navigator.permissions.query) {
       try {
+        logDebug('Querying geolocation permission...');
         const result = await navigator.permissions.query({ name: 'geolocation' });
-        permissionState = result.state;
+        logDebug('Permission state', result.state);
 
         // If permission was previously denied, show guidance
         if (result.state === 'denied') {
+          logDebug('Permission is DENIED - showing help');
           showLocationPermissionHelp();
           return;
         }
+
+        if (result.state === 'prompt') {
+          logDebug('Permission state is PROMPT - will request');
+        }
+
+        if (result.state === 'granted') {
+          logDebug('Permission state is GRANTED');
+        }
       } catch (e) {
         // Permissions API not fully supported, continue with geolocation request
-        console.log('Permissions API not available, trying geolocation directly');
+        logDebug('Permissions API error (this is OK on iOS)', e.message);
       }
+    } else {
+      logDebug('Permissions API not available - proceeding directly to geolocation');
     }
 
     setLocationLoading(true);
+    logDebug('Calling getCurrentPosition...');
 
     try {
       // Try with high accuracy first, fallback to low accuracy
       const position = await getPositionWithFallback();
+      logDebug('SUCCESS! Position received', {
+        lat: position.coords.latitude,
+        lon: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+        altitude: position.coords.altitude
+      });
 
       const { latitude, longitude } = position.coords;
       state.location = { lat: latitude, lon: longitude };
@@ -370,9 +413,12 @@
 
       // Try to get location name via reverse geocoding
       try {
+        logDebug('Attempting reverse geocoding...');
         const name = await reverseGeocode(latitude, longitude);
         state.locationName = name;
+        logDebug('Reverse geocoding success', name);
       } catch (e) {
+        logDebug('Reverse geocoding failed (non-critical)', e.message);
         state.locationName = 'Current Location';
       }
 
@@ -391,10 +437,17 @@
       calculateAndDisplay();
       showToast('Location detected successfully', 'success');
     } catch (error) {
-      console.error('Geolocation error:', error);
+      logDebug('GEOLOCATION ERROR', {
+        code: error.code,
+        message: error.message,
+        PERMISSION_DENIED: error.code === 1,
+        POSITION_UNAVAILABLE: error.code === 2,
+        TIMEOUT: error.code === 3
+      });
       handleGeolocationError(error);
     } finally {
       setLocationLoading(false);
+      logDebug('=== Location detection complete ===');
     }
   }
 
@@ -413,13 +466,30 @@
         maximumAge: 300000
       };
 
+      logDebug('Trying HIGH accuracy GPS', highAccuracyOptions);
+
       navigator.geolocation.getCurrentPosition(
-        resolve,
+        (position) => {
+          logDebug('High accuracy succeeded');
+          resolve(position);
+        },
         (error) => {
+          logDebug('High accuracy FAILED', { code: error.code, message: error.message });
+
           // If high accuracy fails with timeout, try low accuracy
           if (error.code === 3) {
-            console.log('High accuracy timed out, trying low accuracy...');
-            navigator.geolocation.getCurrentPosition(resolve, reject, lowAccuracyOptions);
+            logDebug('Trying LOW accuracy as fallback', lowAccuracyOptions);
+            navigator.geolocation.getCurrentPosition(
+              (position) => {
+                logDebug('Low accuracy succeeded');
+                resolve(position);
+              },
+              (err) => {
+                logDebug('Low accuracy also FAILED', { code: err.code, message: err.message });
+                reject(err);
+              },
+              lowAccuracyOptions
+            );
           } else {
             reject(error);
           }
