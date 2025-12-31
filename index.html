@@ -533,6 +533,102 @@
       </div>
     </div>
 
+    <!-- Calendar Alarm Settings Modal -->
+    <div id="alarm-modal" class="fixed inset-0 z-50 hidden" role="dialog" aria-modal="true" aria-labelledby="alarm-modal-title">
+      <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" id="alarm-modal-backdrop"></div>
+      <div class="absolute inset-x-4 top-1/2 -translate-y-1/2 bg-night-900 rounded-2xl border border-white/10 p-6 max-w-md mx-auto max-h-[90vh] overflow-y-auto">
+        <h3 id="alarm-modal-title" class="text-lg font-semibold mb-2">Calendar Alarm Settings</h3>
+        <p class="text-sm text-white/60 mb-4">Select when you want to be reminded for each prayer. You can choose multiple alarms.</p>
+
+        <!-- Preset Alarms -->
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-white/80 mb-2">Reminder Times</label>
+          <div class="space-y-2">
+            <label class="flex items-center gap-3 p-3 bg-white/5 rounded-xl cursor-pointer hover:bg-white/10 transition-colors">
+              <input type="checkbox" id="alarm-0" value="0" class="alarm-checkbox w-5 h-5 rounded bg-white/10 border-white/30 text-dawn-500 focus:ring-dawn-400 focus:ring-offset-0">
+              <span class="text-sm">At prayer time</span>
+            </label>
+            <label class="flex items-center gap-3 p-3 bg-white/5 rounded-xl cursor-pointer hover:bg-white/10 transition-colors">
+              <input type="checkbox" id="alarm-5" value="5" class="alarm-checkbox w-5 h-5 rounded bg-white/10 border-white/30 text-dawn-500 focus:ring-dawn-400 focus:ring-offset-0">
+              <span class="text-sm">5 minutes before</span>
+            </label>
+            <label class="flex items-center gap-3 p-3 bg-white/5 rounded-xl cursor-pointer hover:bg-white/10 transition-colors">
+              <input type="checkbox" id="alarm-10" value="10" class="alarm-checkbox w-5 h-5 rounded bg-white/10 border-white/30 text-dawn-500 focus:ring-dawn-400 focus:ring-offset-0">
+              <span class="text-sm">10 minutes before</span>
+            </label>
+            <label class="flex items-center gap-3 p-3 bg-dawn-500/20 rounded-xl cursor-pointer hover:bg-dawn-500/30 transition-colors border border-dawn-500/30">
+              <input type="checkbox" id="alarm-15" value="15" checked class="alarm-checkbox w-5 h-5 rounded bg-white/10 border-white/30 text-dawn-500 focus:ring-dawn-400 focus:ring-offset-0">
+              <span class="text-sm">15 minutes before <span class="text-dawn-400">(recommended)</span></span>
+            </label>
+            <label class="flex items-center gap-3 p-3 bg-white/5 rounded-xl cursor-pointer hover:bg-white/10 transition-colors">
+              <input type="checkbox" id="alarm-30" value="30" class="alarm-checkbox w-5 h-5 rounded bg-white/10 border-white/30 text-dawn-500 focus:ring-dawn-400 focus:ring-offset-0">
+              <span class="text-sm">30 minutes before</span>
+            </label>
+            <label class="flex items-center gap-3 p-3 bg-white/5 rounded-xl cursor-pointer hover:bg-white/10 transition-colors">
+              <input type="checkbox" id="alarm-60" value="60" class="alarm-checkbox w-5 h-5 rounded bg-white/10 border-white/30 text-dawn-500 focus:ring-dawn-400 focus:ring-offset-0">
+              <span class="text-sm">1 hour before</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Custom Alarm -->
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-white/80 mb-2">Custom Reminder (optional)</label>
+          <div class="flex items-center gap-2">
+            <input
+              type="number"
+              id="alarm-custom"
+              min="1"
+              max="120"
+              placeholder="e.g., 20"
+              class="flex-1 bg-white/10 border border-white/20 rounded-xl py-2 px-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-dawn-400 focus:border-transparent transition-all text-sm"
+            >
+            <span class="text-sm text-white/60">minutes before</span>
+          </div>
+        </div>
+
+        <!-- Days Selection -->
+        <div class="mb-4">
+          <label for="alarm-days" class="block text-sm font-medium text-white/80 mb-2">Generate for</label>
+          <select id="alarm-days" class="w-full bg-white/10 border border-white/20 rounded-xl py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-dawn-400 focus:border-transparent transition-all">
+            <option value="7">7 days</option>
+            <option value="14">14 days</option>
+            <option value="30" selected>30 days</option>
+            <option value="60">60 days</option>
+            <option value="90">90 days</option>
+          </select>
+        </div>
+
+        <!-- No alarm option -->
+        <div class="mb-6">
+          <label class="flex items-center gap-3 p-3 bg-white/5 rounded-xl cursor-pointer hover:bg-white/10 transition-colors">
+            <input type="checkbox" id="alarm-none" class="w-5 h-5 rounded bg-white/10 border-white/30 text-dawn-500 focus:ring-dawn-400 focus:ring-offset-0">
+            <span class="text-sm text-white/60">No alarms (events only)</span>
+          </label>
+        </div>
+
+        <div class="flex gap-3">
+          <button
+            id="alarm-cancel-btn"
+            type="button"
+            class="flex-1 bg-white/10 hover:bg-white/20 text-white font-medium py-3 px-4 rounded-xl transition-all min-h-[44px]"
+          >
+            Cancel
+          </button>
+          <button
+            id="alarm-download-btn"
+            type="button"
+            class="flex-1 bg-dawn-500 hover:bg-dawn-600 text-white font-medium py-3 px-4 rounded-xl transition-all min-h-[44px] flex items-center justify-center gap-2"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            Download
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Toast notifications -->
     <div id="toast-container" class="fixed bottom-4 left-4 right-4 z-50 flex flex-col gap-2 pointer-events-none max-w-md mx-auto" aria-live="polite"></div>
 

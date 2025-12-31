@@ -407,9 +407,12 @@ const PrayerCalculator = (function() {
       convention = 'MWL',
       locationName = 'Prayer Location',
       daysAhead = 30,
-      alarmMinutes = 15, // Minutes before prayer for alarm
+      alarmMinutes = [15], // Array of minutes before prayer for alarms (supports multiple)
       includeAlarm = true
     } = options;
+
+    // Normalize alarmMinutes to array
+    const alarms = Array.isArray(alarmMinutes) ? alarmMinutes : [alarmMinutes];
 
     const startDate = new Date();
     startDate.setHours(0, 0, 0, 0);
@@ -476,13 +479,21 @@ const PrayerCalculator = (function() {
           icsContent.push('STATUS:CONFIRMED');
           icsContent.push('TRANSP:TRANSPARENT');
 
-          // Add alarm
-          if (includeAlarm) {
-            icsContent.push('BEGIN:VALARM');
-            icsContent.push('TRIGGER:-PT' + alarmMinutes + 'M');
-            icsContent.push('ACTION:DISPLAY');
-            icsContent.push(`DESCRIPTION:${prayerNames[prayer]} prayer in ${alarmMinutes} minutes`);
-            icsContent.push('END:VALARM');
+          // Add alarms (supports multiple)
+          if (includeAlarm && alarms.length > 0) {
+            alarms.forEach(minutes => {
+              icsContent.push('BEGIN:VALARM');
+              if (minutes === 0) {
+                icsContent.push('TRIGGER:PT0M');
+                icsContent.push('ACTION:DISPLAY');
+                icsContent.push(`DESCRIPTION:${prayerNames[prayer]} prayer time now`);
+              } else {
+                icsContent.push('TRIGGER:-PT' + minutes + 'M');
+                icsContent.push('ACTION:DISPLAY');
+                icsContent.push(`DESCRIPTION:${prayerNames[prayer]} prayer in ${minutes} minutes`);
+              }
+              icsContent.push('END:VALARM');
+            });
           }
 
           icsContent.push('END:VEVENT');

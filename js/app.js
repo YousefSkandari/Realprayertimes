@@ -96,6 +96,16 @@
     elements.saveCancelBtn = document.getElementById('save-cancel-btn');
     elements.saveConfirmBtn = document.getElementById('save-confirm-btn');
 
+    // Alarm settings modal
+    elements.alarmModal = document.getElementById('alarm-modal');
+    elements.alarmModalBackdrop = document.getElementById('alarm-modal-backdrop');
+    elements.alarmCheckboxes = document.querySelectorAll('.alarm-checkbox');
+    elements.alarmCustomInput = document.getElementById('alarm-custom');
+    elements.alarmDaysSelect = document.getElementById('alarm-days');
+    elements.alarmNoneCheckbox = document.getElementById('alarm-none');
+    elements.alarmCancelBtn = document.getElementById('alarm-cancel-btn');
+    elements.alarmDownloadBtn = document.getElementById('alarm-download-btn');
+
     // Toast container
     elements.toastContainer = document.getElementById('toast-container');
   }
@@ -203,9 +213,23 @@
     elements.saveCancelBtn.addEventListener('click', closeSaveModal);
     elements.saveConfirmBtn.addEventListener('click', confirmSaveLocation);
 
-    // Download calendar
+    // Download calendar (opens alarm settings modal)
     if (elements.downloadCalendarBtn) {
-      elements.downloadCalendarBtn.addEventListener('click', downloadCalendar);
+      elements.downloadCalendarBtn.addEventListener('click', openAlarmModal);
+    }
+
+    // Alarm modal
+    if (elements.alarmModalBackdrop) {
+      elements.alarmModalBackdrop.addEventListener('click', closeAlarmModal);
+    }
+    if (elements.alarmCancelBtn) {
+      elements.alarmCancelBtn.addEventListener('click', closeAlarmModal);
+    }
+    if (elements.alarmDownloadBtn) {
+      elements.alarmDownloadBtn.addEventListener('click', downloadCalendarWithAlarms);
+    }
+    if (elements.alarmNoneCheckbox) {
+      elements.alarmNoneCheckbox.addEventListener('change', handleNoAlarmToggle);
     }
 
     // Keyboard navigation
@@ -982,26 +1006,97 @@ Calculation: ${state.convention}`;
 
   // ============ Calendar Download ============
 
-  function downloadCalendar() {
+  function openAlarmModal() {
     if (!state.location) {
       showToast('Please set a location first', 'error');
       return;
     }
 
+    // Reset modal to defaults
+    elements.alarmCheckboxes.forEach(cb => {
+      cb.checked = cb.value === '15'; // Default: 15 min selected
+      cb.disabled = false;
+    });
+    elements.alarmCustomInput.value = '';
+    elements.alarmCustomInput.disabled = false;
+    elements.alarmDaysSelect.value = '30';
+    elements.alarmNoneCheckbox.checked = false;
+
+    elements.alarmModal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeAlarmModal() {
+    elements.alarmModal.classList.add('hidden');
+    document.body.style.overflow = '';
+    elements.downloadCalendarBtn.focus();
+  }
+
+  function handleNoAlarmToggle() {
+    const noAlarm = elements.alarmNoneCheckbox.checked;
+
+    // Disable/enable all alarm checkboxes and custom input
+    elements.alarmCheckboxes.forEach(cb => {
+      cb.disabled = noAlarm;
+      if (noAlarm) cb.checked = false;
+    });
+    elements.alarmCustomInput.disabled = noAlarm;
+    if (noAlarm) elements.alarmCustomInput.value = '';
+  }
+
+  function getSelectedAlarms() {
+    const alarms = [];
+
+    // Get checked preset alarms
+    elements.alarmCheckboxes.forEach(cb => {
+      if (cb.checked && !cb.disabled) {
+        alarms.push(parseInt(cb.value, 10));
+      }
+    });
+
+    // Get custom alarm if specified
+    const customValue = parseInt(elements.alarmCustomInput.value, 10);
+    if (!isNaN(customValue) && customValue > 0 && customValue <= 120) {
+      if (!alarms.includes(customValue)) {
+        alarms.push(customValue);
+      }
+    }
+
+    // Sort alarms in ascending order
+    return alarms.sort((a, b) => a - b);
+  }
+
+  function downloadCalendarWithAlarms() {
     try {
+      const alarms = getSelectedAlarms();
+      const daysAhead = parseInt(elements.alarmDaysSelect.value, 10);
+      const noAlarm = elements.alarmNoneCheckbox.checked;
+
       const icsContent = PrayerCalculator.generateICS({
         latitude: state.location.lat,
         longitude: state.location.lon,
         elevation: state.elevation,
         convention: state.convention,
         locationName: state.locationName || 'Prayer Location',
-        daysAhead: 30,
-        alarmMinutes: 15,
-        includeAlarm: true
+        daysAhead: daysAhead,
+        alarmMinutes: alarms,
+        includeAlarm: !noAlarm && alarms.length > 0
       });
 
       PrayerCalculator.downloadICS(icsContent, 'prayer-times.ics');
-      showToast('Calendar downloaded! Import to a new calendar for easy deletion.', 'success');
+
+      closeAlarmModal();
+
+      // Show success message with alarm info
+      if (noAlarm || alarms.length === 0) {
+        showToast(`Calendar downloaded (${daysAhead} days, no alarms)`, 'success');
+      } else if (alarms.length === 1) {
+        const mins = alarms[0];
+        const msg = mins === 0 ? 'at prayer time' : `${mins} min before`;
+        showToast(`Calendar downloaded (${daysAhead} days, alarm ${msg})`, 'success');
+      } else {
+        showToast(`Calendar downloaded (${daysAhead} days, ${alarms.length} alarms)`, 'success');
+      }
     } catch (error) {
       console.error('Calendar generation error:', error);
       showToast('Failed to generate calendar. Please try again.', 'error');
@@ -1054,6 +1149,9 @@ Calculation: ${state.convention}`;
       }
       if (!elements.saveModal.classList.contains('hidden')) {
         closeSaveModal();
+      }
+      if (!elements.alarmModal.classList.contains('hidden')) {
+        closeAlarmModal();
       }
     }
   }
