@@ -351,11 +351,12 @@
     }
   }
 
-  async function autoDetectLocation() {
+  function autoDetectLocation() {
     logDebug('=== Starting location detection ===');
     logDebug('Navigator.geolocation available', !!navigator.geolocation);
     logDebug('User Agent', navigator.userAgent);
     logDebug('Protocol', window.location.protocol);
+    logDebug('Hostname', window.location.hostname);
 
     if (!navigator.geolocation) {
       logDebug('ERROR: Geolocation not supported');
@@ -363,140 +364,74 @@
       return;
     }
 
-    // Check permission state first (where supported)
-    logDebug('Checking Permissions API availability', !!navigator.permissions);
-
-    if (navigator.permissions && navigator.permissions.query) {
-      try {
-        logDebug('Querying geolocation permission...');
-        const result = await navigator.permissions.query({ name: 'geolocation' });
-        logDebug('Permission state', result.state);
-
-        // If permission was previously denied, show guidance
-        if (result.state === 'denied') {
-          logDebug('Permission is DENIED - showing help');
-          showLocationPermissionHelp();
-          return;
-        }
-
-        if (result.state === 'prompt') {
-          logDebug('Permission state is PROMPT - will request');
-        }
-
-        if (result.state === 'granted') {
-          logDebug('Permission state is GRANTED');
-        }
-      } catch (e) {
-        // Permissions API not fully supported, continue with geolocation request
-        logDebug('Permissions API error (this is OK on iOS)', e.message);
-      }
-    } else {
-      logDebug('Permissions API not available - proceeding directly to geolocation');
-    }
-
     setLocationLoading(true);
-    logDebug('Calling getCurrentPosition...');
+    logDebug('Calling getCurrentPosition IMMEDIATELY (iOS requires this)...');
 
-    try {
-      // Try with high accuracy first, fallback to low accuracy
-      const position = await getPositionWithFallback();
-      logDebug('SUCCESS! Position received', {
-        lat: position.coords.latitude,
-        lon: position.coords.longitude,
-        accuracy: position.coords.accuracy,
-        altitude: position.coords.altitude
-      });
+    // iOS Safari requires geolocation to be called directly from user gesture
+    // No async operations before this call!
+    navigator.geolocation.getCurrentPosition(
+      // Success callback
+      function(position) {
+        logDebug('SUCCESS! Position received', {
+          lat: position.coords.latitude,
+          lon: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          altitude: position.coords.altitude
+        });
 
-      const { latitude, longitude } = position.coords;
-      state.location = { lat: latitude, lon: longitude };
-      state.elevation = position.coords.altitude || 0;
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+        state.location = { lat: latitude, lon: longitude };
+        state.elevation = position.coords.altitude || 0;
 
-      // Try to get location name via reverse geocoding
-      try {
-        logDebug('Attempting reverse geocoding...');
-        const name = await reverseGeocode(latitude, longitude);
-        state.locationName = name;
-        logDebug('Reverse geocoding success', name);
-      } catch (e) {
-        logDebug('Reverse geocoding failed (non-critical)', e.message);
-        state.locationName = 'Current Location';
+        // Update UI
+        showLocationDisplay('Current Location', latitude, longitude);
+        elements.latitudeInput.value = latitude.toFixed(6);
+        elements.longitudeInput.value = longitude.toFixed(6);
+        elements.elevationInput.value = Math.round(state.elevation);
+
+        // Save and calculate
+        StorageManager.saveLastLocation({
+          latitude,
+          longitude,
+          elevation: state.elevation,
+          name: 'Current Location'
+        });
+
+        calculateAndDisplay();
+        setLocationLoading(false);
+        showToast('Location detected successfully', 'success');
+        logDebug('=== Location detection complete ===');
+
+        // Try reverse geocoding in background (non-blocking)
+        reverseGeocode(latitude, longitude)
+          .then(name => {
+            state.locationName = name;
+            showLocationDisplay(name, latitude, longitude);
+            logDebug('Reverse geocoding success', name);
+          })
+          .catch(e => logDebug('Reverse geocoding failed (non-critical)', e.message));
+      },
+      // Error callback
+      function(error) {
+        logDebug('GEOLOCATION ERROR', {
+          code: error.code,
+          message: error.message,
+          PERMISSION_DENIED: error.code === 1,
+          POSITION_UNAVAILABLE: error.code === 2,
+          TIMEOUT: error.code === 3
+        });
+        setLocationLoading(false);
+        handleGeolocationError(error);
+        logDebug('=== Location detection complete (with error) ===');
+      },
+      // Options - use simple options for maximum compatibility
+      {
+        enableHighAccuracy: false,  // Start with low accuracy for faster response
+        timeout: 30000,             // 30 second timeout
+        maximumAge: 300000          // Accept cached position up to 5 minutes old
       }
-
-      showLocationDisplay(state.locationName, latitude, longitude);
-      elements.latitudeInput.value = latitude.toFixed(6);
-      elements.longitudeInput.value = longitude.toFixed(6);
-      elements.elevationInput.value = Math.round(state.elevation);
-
-      StorageManager.saveLastLocation({
-        latitude,
-        longitude,
-        elevation: state.elevation,
-        name: state.locationName
-      });
-
-      calculateAndDisplay();
-      showToast('Location detected successfully', 'success');
-    } catch (error) {
-      logDebug('GEOLOCATION ERROR', {
-        code: error.code,
-        message: error.message,
-        PERMISSION_DENIED: error.code === 1,
-        POSITION_UNAVAILABLE: error.code === 2,
-        TIMEOUT: error.code === 3
-      });
-      handleGeolocationError(error);
-    } finally {
-      setLocationLoading(false);
-      logDebug('=== Location detection complete ===');
-    }
-  }
-
-  function getPositionWithFallback() {
-    return new Promise((resolve, reject) => {
-      // First try with high accuracy (GPS)
-      const highAccuracyOptions = {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 60000
-      };
-
-      const lowAccuracyOptions = {
-        enableHighAccuracy: false,
-        timeout: 20000,
-        maximumAge: 300000
-      };
-
-      logDebug('Trying HIGH accuracy GPS', highAccuracyOptions);
-
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          logDebug('High accuracy succeeded');
-          resolve(position);
-        },
-        (error) => {
-          logDebug('High accuracy FAILED', { code: error.code, message: error.message });
-
-          // If high accuracy fails with timeout, try low accuracy
-          if (error.code === 3) {
-            logDebug('Trying LOW accuracy as fallback', lowAccuracyOptions);
-            navigator.geolocation.getCurrentPosition(
-              (position) => {
-                logDebug('Low accuracy succeeded');
-                resolve(position);
-              },
-              (err) => {
-                logDebug('Low accuracy also FAILED', { code: err.code, message: err.message });
-                reject(err);
-              },
-              lowAccuracyOptions
-            );
-          } else {
-            reject(error);
-          }
-        },
-        highAccuracyOptions
-      );
-    });
+    );
   }
 
   function handleGeolocationError(error) {
