@@ -10,6 +10,7 @@
 
   // ============ State ============
   const state = {
+    currentStep: 1,
     location: null,
     locationName: null,
     elevation: 0,
@@ -27,6 +28,24 @@
   const elements = {};
 
   function initElements() {
+    // Step wizard
+    elements.step1 = document.getElementById('step-1');
+    elements.step2 = document.getElementById('step-2');
+    elements.step3 = document.getElementById('step-3');
+    elements.step1Circle = document.getElementById('step-1-circle');
+    elements.step2Circle = document.getElementById('step-2-circle');
+    elements.step3Circle = document.getElementById('step-3-circle');
+    elements.step1Label = document.getElementById('step-1-label');
+    elements.step2Label = document.getElementById('step-2-label');
+    elements.step3Label = document.getElementById('step-3-label');
+    elements.stepConnector1 = document.getElementById('step-connector-1');
+    elements.stepConnector2 = document.getElementById('step-connector-2');
+    elements.step1Next = document.getElementById('step-1-next');
+    elements.step2Back = document.getElementById('step-2-back');
+    elements.step2Next = document.getElementById('step-2-next');
+    elements.step3Restart = document.getElementById('step-3-restart');
+    elements.resultLocationInfo = document.getElementById('result-location-info');
+
     // Header
     elements.themeToggle = document.getElementById('theme-toggle');
     elements.themeIconLight = document.getElementById('theme-icon-light');
@@ -74,7 +93,6 @@
     elements.calendarBtn = document.getElementById('calendar-btn');
     elements.saveLocationBtn = document.getElementById('save-location-btn');
     elements.downloadCalendarBtn = document.getElementById('download-calendar-btn');
-    elements.calendarInstructions = document.getElementById('calendar-instructions');
 
     // Saved locations
     elements.savedLocationsSection = document.getElementById('saved-locations-section');
@@ -100,7 +118,6 @@
     elements.alarmModal = document.getElementById('alarm-modal');
     elements.alarmModalBackdrop = document.getElementById('alarm-modal-backdrop');
     elements.alarmCheckboxes = document.querySelectorAll('.alarm-checkbox');
-    elements.alarmCustomInput = document.getElementById('alarm-custom');
     elements.alarmDaysSelect = document.getElementById('alarm-days');
     elements.alarmNoneCheckbox = document.getElementById('alarm-none');
     elements.alarmCancelBtn = document.getElementById('alarm-cancel-btn');
@@ -120,7 +137,15 @@
     loadSavedLocations();
     loadLastLocation();
     setDefaultDate();
-    updateUI();
+
+    // If we have a saved location, go directly to results
+    if (state.location) {
+      goToStep(3);
+    } else {
+      goToStep(1);
+    }
+
+    startCountdownTimer();
   }
 
   function initTheme() {
@@ -160,6 +185,12 @@
 
     // Share button
     elements.shareBtn.addEventListener('click', shareTime);
+
+    // Step navigation
+    elements.step1Next.addEventListener('click', () => goToStep(2));
+    elements.step2Back.addEventListener('click', () => goToStep(1));
+    elements.step2Next.addEventListener('click', () => goToStep(3));
+    elements.step3Restart.addEventListener('click', () => goToStep(1));
 
     // Auto-detect location
     elements.autoDetectBtn.addEventListener('click', autoDetectLocation);
@@ -264,6 +295,7 @@
 
       showLocationDisplay(state.locationName, state.location.lat, state.location.lon);
       elements.elevationInput.value = state.elevation;
+      enableNextButton();
       calculateAndDisplay();
     }
   }
@@ -346,6 +378,7 @@
       name: state.locationName
     });
 
+    enableNextButton();
     calculateAndDisplay();
     showToast('Location loaded', 'success');
   }
@@ -361,6 +394,87 @@
     const dateStr = today.toISOString().split('T')[0];
     elements.dateInput.value = dateStr;
     state.date = today;
+  }
+
+  // ============ Step Navigation ============
+
+  function goToStep(step) {
+    state.currentStep = step;
+
+    // Hide all steps
+    elements.step1.classList.add('hidden');
+    elements.step2.classList.add('hidden');
+    elements.step3.classList.add('hidden');
+
+    // Show current step
+    if (step === 1) {
+      elements.step1.classList.remove('hidden');
+    } else if (step === 2) {
+      elements.step2.classList.remove('hidden');
+    } else if (step === 3) {
+      elements.step3.classList.remove('hidden');
+      calculateAndDisplay();
+      updateResultInfo();
+    }
+
+    updateStepIndicator();
+
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function updateStepIndicator() {
+    const step = state.currentStep;
+
+    // Step 1
+    if (step >= 1) {
+      elements.step1Circle.className = 'w-10 h-10 rounded-full bg-dawn-500 flex items-center justify-center text-white font-semibold';
+      elements.step1Label.className = 'ml-2 text-sm font-medium text-white hidden sm:block';
+    }
+
+    // Connector 1
+    if (step > 1) {
+      elements.stepConnector1.className = 'w-12 sm:w-20 h-0.5 mx-2 bg-dawn-500';
+    } else {
+      elements.stepConnector1.className = 'w-12 sm:w-20 h-0.5 mx-2 bg-white/20';
+    }
+
+    // Step 2
+    if (step >= 2) {
+      elements.step2Circle.className = 'w-10 h-10 rounded-full bg-dawn-500 flex items-center justify-center text-white font-semibold';
+      elements.step2Label.className = 'ml-2 text-sm font-medium text-white hidden sm:block';
+    } else {
+      elements.step2Circle.className = 'w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white/60 font-semibold';
+      elements.step2Label.className = 'ml-2 text-sm font-medium text-white/60 hidden sm:block';
+    }
+
+    // Connector 2
+    if (step > 2) {
+      elements.stepConnector2.className = 'w-12 sm:w-20 h-0.5 mx-2 bg-dawn-500';
+    } else {
+      elements.stepConnector2.className = 'w-12 sm:w-20 h-0.5 mx-2 bg-white/20';
+    }
+
+    // Step 3
+    if (step >= 3) {
+      elements.step3Circle.className = 'w-10 h-10 rounded-full bg-dawn-500 flex items-center justify-center text-white font-semibold';
+      elements.step3Label.className = 'ml-2 text-sm font-medium text-white hidden sm:block';
+    } else {
+      elements.step3Circle.className = 'w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white/60 font-semibold';
+      elements.step3Label.className = 'ml-2 text-sm font-medium text-white/60 hidden sm:block';
+    }
+  }
+
+  function enableNextButton() {
+    if (state.location) {
+      elements.step1Next.disabled = false;
+    }
+  }
+
+  function updateResultInfo() {
+    const locationName = state.locationName || 'Unknown Location';
+    const conventionName = elements.conventionSelect.options[elements.conventionSelect.selectedIndex].text;
+    elements.resultLocationInfo.textContent = `${locationName} • ${conventionName}`;
   }
 
   // ============ Location Services ============
@@ -393,6 +507,7 @@
           name: 'Current Location'
         });
 
+        enableNextButton();
         calculateAndDisplay();
         setLocationLoading(false);
         showToast('Location detected successfully', 'success');
@@ -471,6 +586,7 @@
       name
     });
 
+    enableNextButton();
     calculateAndDisplay();
     showToast(`Location set to ${name.split(',')[0]}`, 'success');
   }
@@ -585,6 +701,7 @@
       name
     });
 
+    enableNextButton();
     calculateAndDisplay();
     showToast('Location set successfully', 'success');
   }
@@ -692,6 +809,7 @@
       name: state.locationName
     });
 
+    enableNextButton();
     calculateAndDisplay();
     showToast('Location applied', 'success');
   }
@@ -1012,13 +1130,11 @@ Calculation: ${state.convention}`;
       return;
     }
 
-    // Reset modal to defaults
+    // Reset modal to defaults (at prayer time + 15 min before)
     elements.alarmCheckboxes.forEach(cb => {
-      cb.checked = cb.value === '15'; // Default: 15 min selected
+      cb.checked = cb.value === '0' || cb.value === '15'; // Default: at prayer time + 15 min
       cb.disabled = false;
     });
-    elements.alarmCustomInput.value = '';
-    elements.alarmCustomInput.disabled = false;
     elements.alarmDaysSelect.value = '30';
     elements.alarmNoneCheckbox.checked = false;
 
@@ -1035,13 +1151,11 @@ Calculation: ${state.convention}`;
   function handleNoAlarmToggle() {
     const noAlarm = elements.alarmNoneCheckbox.checked;
 
-    // Disable/enable all alarm checkboxes and custom input
+    // Disable/enable all alarm checkboxes
     elements.alarmCheckboxes.forEach(cb => {
       cb.disabled = noAlarm;
       if (noAlarm) cb.checked = false;
     });
-    elements.alarmCustomInput.disabled = noAlarm;
-    if (noAlarm) elements.alarmCustomInput.value = '';
   }
 
   function getSelectedAlarms() {
@@ -1053,14 +1167,6 @@ Calculation: ${state.convention}`;
         alarms.push(parseInt(cb.value, 10));
       }
     });
-
-    // Get custom alarm if specified
-    const customValue = parseInt(elements.alarmCustomInput.value, 10);
-    if (!isNaN(customValue) && customValue > 0 && customValue <= 120) {
-      if (!alarms.includes(customValue)) {
-        alarms.push(customValue);
-      }
-    }
 
     // Sort alarms in ascending order
     return alarms.sort((a, b) => a - b);
