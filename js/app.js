@@ -5,8 +5,13 @@
  * between the calculation engine and storage manager.
  */
 
+// Immediate startup logging
+console.log('[APP] Script loading...');
+
 (function() {
   'use strict';
+
+  console.log('[APP] IIFE started');
 
   // ============ State ============
   const state = {
@@ -101,14 +106,54 @@
   // ============ Initialization ============
 
   function init() {
-    initElements();
-    initTheme();
-    initEventListeners();
-    loadPreferences();
-    loadSavedLocations();
-    loadLastLocation();
-    setDefaultDate();
-    updateUI();
+    console.log('[APP] init() called');
+
+    // Log to debug panel immediately
+    const debugPanel = document.getElementById('debug-output');
+    if (debugPanel) {
+      debugPanel.innerHTML = '<div class="text-yellow-400">App initializing...</div>';
+    }
+
+    try {
+      console.log('[APP] Calling initElements...');
+      initElements();
+      console.log('[APP] initElements done');
+
+      console.log('[APP] Calling initTheme...');
+      initTheme();
+      console.log('[APP] initTheme done');
+
+      console.log('[APP] Calling initEventListeners...');
+      initEventListeners();
+      console.log('[APP] initEventListeners done');
+
+      console.log('[APP] Calling loadPreferences...');
+      loadPreferences();
+
+      console.log('[APP] Calling loadSavedLocations...');
+      loadSavedLocations();
+
+      console.log('[APP] Calling loadLastLocation...');
+      loadLastLocation();
+
+      console.log('[APP] Calling setDefaultDate...');
+      setDefaultDate();
+
+      console.log('[APP] Calling updateUI...');
+      updateUI();
+
+      console.log('[APP] Init complete!');
+
+      // Update debug panel to show ready state
+      if (debugPanel) {
+        debugPanel.innerHTML = '<div class="text-green-400">App ready! Tap "Auto-detect Location" to test.</div>';
+      }
+    } catch (error) {
+      console.error('[APP] Init error:', error);
+      if (debugPanel) {
+        debugPanel.innerHTML = '<div class="text-red-400">ERROR: ' + error.message + '</div>';
+      }
+    }
   }
 
   function initTheme() {
@@ -150,7 +195,11 @@
     elements.shareBtn.addEventListener('click', shareTime);
 
     // Auto-detect location
-    elements.autoDetectBtn.addEventListener('click', autoDetectLocation);
+    console.log('[APP] Adding click listener to auto-detect button');
+    elements.autoDetectBtn.addEventListener('click', function() {
+      console.log('[APP] Auto-detect button CLICKED!');
+      autoDetectLocation();
+    });
 
     // Quick city buttons
     document.querySelectorAll('.quick-city-btn').forEach(btn => {
