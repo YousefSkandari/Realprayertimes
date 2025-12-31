@@ -5,13 +5,8 @@
  * between the calculation engine and storage manager.
  */
 
-// Immediate startup logging
-console.log('[APP] Script loading...');
-
 (function() {
   'use strict';
-
-  console.log('[APP] IIFE started');
 
   // ============ State ============
   const state = {
@@ -106,54 +101,14 @@ console.log('[APP] Script loading...');
   // ============ Initialization ============
 
   function init() {
-    console.log('[APP] init() called');
-
-    // Log to debug panel immediately
-    const debugPanel = document.getElementById('debug-output');
-    if (debugPanel) {
-      debugPanel.innerHTML = '<div class="text-yellow-400">App initializing...</div>';
-    }
-
-    try {
-      console.log('[APP] Calling initElements...');
-      initElements();
-      console.log('[APP] initElements done');
-
-      console.log('[APP] Calling initTheme...');
-      initTheme();
-      console.log('[APP] initTheme done');
-
-      console.log('[APP] Calling initEventListeners...');
-      initEventListeners();
-      console.log('[APP] initEventListeners done');
-
-      console.log('[APP] Calling loadPreferences...');
-      loadPreferences();
-
-      console.log('[APP] Calling loadSavedLocations...');
-      loadSavedLocations();
-
-      console.log('[APP] Calling loadLastLocation...');
-      loadLastLocation();
-
-      console.log('[APP] Calling setDefaultDate...');
-      setDefaultDate();
-
-      console.log('[APP] Calling updateUI...');
-      updateUI();
-
-      console.log('[APP] Init complete!');
-
-      // Update debug panel to show ready state
-      if (debugPanel) {
-        debugPanel.innerHTML = '<div class="text-green-400">App ready! Tap "Auto-detect Location" to test.</div>';
-      }
-    } catch (error) {
-      console.error('[APP] Init error:', error);
-      if (debugPanel) {
-        debugPanel.innerHTML = '<div class="text-red-400">ERROR: ' + error.message + '</div>';
-      }
-    }
+    initElements();
+    initTheme();
+    initEventListeners();
+    loadPreferences();
+    loadSavedLocations();
+    loadLastLocation();
+    setDefaultDate();
+    updateUI();
   }
 
   function initTheme() {
@@ -195,11 +150,7 @@ console.log('[APP] Script loading...');
     elements.shareBtn.addEventListener('click', shareTime);
 
     // Auto-detect location
-    console.log('[APP] Adding click listener to auto-detect button');
-    elements.autoDetectBtn.addEventListener('click', function() {
-      console.log('[APP] Auto-detect button CLICKED!');
-      autoDetectLocation();
-    });
+    elements.autoDetectBtn.addEventListener('click', autoDetectLocation);
 
     // Quick city buttons
     document.querySelectorAll('.quick-city-btn').forEach(btn => {
@@ -383,63 +334,27 @@ console.log('[APP] Script loading...');
 
   // ============ Location Services ============
 
-  // Debug logging function
-  function logDebug(message, data = null) {
-    const timestamp = new Date().toISOString();
-    const logEntry = `[${timestamp}] ${message}`;
-    console.log(logEntry, data || '');
-
-    // Also append to visible debug panel if it exists
-    const debugPanel = document.getElementById('debug-output');
-    if (debugPanel) {
-      const entry = document.createElement('div');
-      entry.className = 'text-xs mb-1';
-      entry.textContent = data ? `${message}: ${JSON.stringify(data)}` : message;
-      debugPanel.appendChild(entry);
-      debugPanel.scrollTop = debugPanel.scrollHeight;
-    }
-  }
-
   function autoDetectLocation() {
-    logDebug('=== Starting location detection ===');
-    logDebug('Navigator.geolocation available', !!navigator.geolocation);
-    logDebug('User Agent', navigator.userAgent);
-    logDebug('Protocol', window.location.protocol);
-    logDebug('Hostname', window.location.hostname);
-
     if (!navigator.geolocation) {
-      logDebug('ERROR: Geolocation not supported');
       showToast('Geolocation is not supported by your browser', 'error');
       return;
     }
 
     setLocationLoading(true);
-    logDebug('Calling getCurrentPosition IMMEDIATELY (iOS requires this)...');
 
     // iOS Safari requires geolocation to be called directly from user gesture
-    // No async operations before this call!
     navigator.geolocation.getCurrentPosition(
-      // Success callback
       function(position) {
-        logDebug('SUCCESS! Position received', {
-          lat: position.coords.latitude,
-          lon: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-          altitude: position.coords.altitude
-        });
-
         const latitude = position.coords.latitude;
         const longitude = position.coords.longitude;
         state.location = { lat: latitude, lon: longitude };
         state.elevation = position.coords.altitude || 0;
 
-        // Update UI
         showLocationDisplay('Current Location', latitude, longitude);
         elements.latitudeInput.value = latitude.toFixed(6);
         elements.longitudeInput.value = longitude.toFixed(6);
         elements.elevationInput.value = Math.round(state.elevation);
 
-        // Save and calculate
         StorageManager.saveLastLocation({
           latitude,
           longitude,
@@ -450,29 +365,18 @@ console.log('[APP] Script loading...');
         calculateAndDisplay();
         setLocationLoading(false);
         showToast('Location detected successfully', 'success');
-        logDebug('=== Location detection complete ===');
 
-        // Try reverse geocoding in background (non-blocking)
+        // Try reverse geocoding in background
         reverseGeocode(latitude, longitude)
           .then(name => {
             state.locationName = name;
             showLocationDisplay(name, latitude, longitude);
-            logDebug('Reverse geocoding success', name);
           })
-          .catch(e => logDebug('Reverse geocoding failed (non-critical)', e.message));
+          .catch(() => {});
       },
-      // Error callback
       function(error) {
-        logDebug('GEOLOCATION ERROR', {
-          code: error.code,
-          message: error.message,
-          PERMISSION_DENIED: error.code === 1,
-          POSITION_UNAVAILABLE: error.code === 2,
-          TIMEOUT: error.code === 3
-        });
         setLocationLoading(false);
         handleGeolocationError(error);
-        logDebug('=== Location detection complete (with error) ===');
       },
       // Options - use simple options for maximum compatibility
       {
