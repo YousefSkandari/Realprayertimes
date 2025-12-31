@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prayer Time Calculation Tests</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 800px;
+      margin: 2rem auto;
+      padding: 1rem;
+      background: #1a1a2e;
+      color: #eee;
+    }
+    h1 { color: #f19033; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+    }
+    th, td {
+      padding: 0.75rem;
+      text-align: left;
+      border: 1px solid #333;
+    }
+    th { background: #2a2a4e; }
+    .pass { color: #4ade80; }
+    .fail { color: #f87171; }
+    .info { color: #60a5fa; }
+    pre {
+      background: #2a2a4e;
+      padding: 1rem;
+      border-radius: 0.5rem;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Fajr Prayer Time Calculation Tests</h1>
+  <p>Running tests against the expected values from the requirements...</p>
+
+  <div id="results"></div>
+
+  <h2>Detailed Results</h2>
+  <pre id="details"></pre>
+
+  <script src="js/calculations.js"></script>
+  <script>
+    const testCases = [
+      {
+        name: 'Manchester, UK (100m elevation)',
+        location: { lat: 53.3325, lon: -2.1331 },
+        elevation: 100,
+        convention: 'MWL',
+        date: new Date(2024, 11, 31), // Dec 31, 2024
+        expectedFajr: '06:11',
+        tolerance: 5 // minutes
+      },
+      {
+        name: 'Manchester, UK (1085m elevation)',
+        location: { lat: 53.3325, lon: -2.1331 },
+        elevation: 1085,
+        convention: 'MWL',
+        date: new Date(2024, 11, 31),
+        expectedFajr: '06:05',
+        tolerance: 5
+      },
+      {
+        name: 'Makkah, Saudi Arabia',
+        location: { lat: 21.4225, lon: 39.8262 },
+        elevation: 0,
+        convention: 'Makkah',
+        date: new Date(2024, 11, 31),
+        expectedFajr: '05:42',
+        tolerance: 5
+      },
+      {
+        name: 'London, UK (Summer - High Latitude)',
+        location: { lat: 51.5074, lon: -0.1278 },
+        elevation: 0,
+        convention: 'MWL',
+        date: new Date(2024, 5, 21), // Jun 21, 2024
+        expectedFajr: '02:15',
+        tolerance: 15, // Higher tolerance for high latitude
+        note: 'May require fallback method'
+      }
+    ];
+
+    function parseTime(timeStr) {
+      const [hours, minutes] = timeStr.split(':').map(Number);
+      return hours * 60 + minutes;
+    }
+
+    function runTests() {
+      const resultsDiv = document.getElementById('results');
+      const detailsPre = document.getElementById('details');
+
+      let html = '<table><thead><tr><th>Test Case</th><th>Expected</th><th>Calculated</th><th>Diff</th><th>Status</th></tr></thead><tbody>';
+      let details = [];
+
+      testCases.forEach((test, index) => {
+        const result = PrayerCalculator.calculate({
+          latitude: test.location.lat,
+          longitude: test.location.lon,
+          elevation: test.elevation,
+          date: test.date,
+          convention: test.convention
+        });
+
+        const expectedMinutes = parseTime(test.expectedFajr);
+        const calculatedMinutes = parseTime(result.fajr.formatted);
+        const diff = Math.abs(expectedMinutes - calculatedMinutes);
+        const passed = diff <= test.tolerance;
+
+        const statusClass = passed ? 'pass' : 'fail';
+        const statusText = passed ? 'PASS' : 'FAIL';
+
+        html += `
+          <tr>
+            <td>${test.name}${test.note ? '<br><small class="info">(' + test.note + ')</small>' : ''}</td>
+            <td>${test.expectedFajr} AM</td>
+            <td>${result.fajr.formatted} ${result.fajr.period}${result.highLatWarning ? '<br><small class="info">' + result.highLatWarning + '</small>' : ''}</td>
+            <td>${diff} min</td>
+            <td class="${statusClass}">${statusText}</td>
+          </tr>
+        `;
+
+        details.push({
+          test: test.name,
+          input: {
+            latitude: test.location.lat,
+            longitude: test.location.lon,
+            elevation: test.elevation,
+            convention: test.convention,
+            date: test.date.toDateString()
+          },
+          output: {
+            fajr: `${result.fajr.formatted} ${result.fajr.period}`,
+            sunrise: `${result.sunrise.formatted} ${result.sunrise.period}`,
+            declination: result.calculation.declination,
+            equationOfTime: result.calculation.equationOfTime,
+            dayOfYear: result.calculation.dayOfYear,
+            highLatWarning: result.highLatWarning
+          },
+          expected: test.expectedFajr,
+          diff: diff,
+          passed: passed
+        });
+      });
+
+      html += '</tbody></table>';
+
+      const allPassed = details.every(d => d.passed);
+      html += `<p class="${allPassed ? 'pass' : 'fail'}"><strong>${allPassed ? 'All tests passed!' : 'Some tests failed.'}</strong></p>`;
+
+      resultsDiv.innerHTML = html;
+      detailsPre.textContent = JSON.stringify(details, null, 2);
+    }
+
+    runTests();
+  </script>
+</body>
+</html>

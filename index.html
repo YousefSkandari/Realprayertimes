@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Calculate accurate Fajr (dawn) prayer times based on your location, elevation, and preferred calculation method.">
+  <meta name="theme-color" content="#1e3a5f" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  <title>Fajr Prayer Time Calculator</title>
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌅</text></svg>">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json">
+
+  <!-- Preconnect for APIs -->
+  <link rel="preconnect" href="https://nominatim.openstreetmap.org">
+
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            dawn: {
+              50: '#fef7ee',
+              100: '#fdecd3',
+              200: '#fad5a5',
+              300: '#f6b76d',
+              400: '#f19033',
+              500: '#ed7413',
+              600: '#de5909',
+              700: '#b8420a',
+              800: '#933510',
+              900: '#772e10',
+            },
+            night: {
+              50: '#f0f4ff',
+              100: '#e0e8ff',
+              200: '#c7d4fe',
+              300: '#a4b8fc',
+              400: '#8093f8',
+              500: '#6370f1',
+              600: '#4f4fe5',
+              700: '#4340c9',
+              800: '#3836a2',
+              900: '#1e3a5f',
+              950: '#0f172a',
+            }
+          },
+          fontFamily: {
+            'display': ['system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+          },
+          animation: {
+            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'fade-in': 'fadeIn 0.5s ease-out',
+            'slide-up': 'slideUp 0.3s ease-out',
+          },
+          keyframes: {
+            fadeIn: {
+              '0%': { opacity: '0' },
+              '100%': { opacity: '1' },
+            },
+            slideUp: {
+              '0%': { opacity: '0', transform: 'translateY(10px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="min-h-screen bg-gradient-to-b from-night-900 to-night-950 dark:from-night-950 dark:to-black text-white font-display antialiased transition-colors duration-300">
+
+  <!-- Skip to main content for accessibility -->
+  <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 bg-dawn-500 text-white px-4 py-2 rounded-lg z-50">
+    Skip to main content
+  </a>
+
+  <!-- Header -->
+  <header class="sticky top-0 z-40 backdrop-blur-md bg-night-900/80 dark:bg-night-950/80 border-b border-white/10">
+    <div class="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-2xl" role="img" aria-label="Sunrise">🌅</span>
+        <h1 class="text-lg font-semibold tracking-tight">Fajr Calculator</h1>
+      </div>
+      <div class="flex items-center gap-2">
+        <!-- Dark mode toggle -->
+        <button
+          id="theme-toggle"
+          type="button"
+          class="p-2 rounded-full hover:bg-white/10 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+          aria-label="Toggle dark mode"
+          title="Toggle dark mode"
+        >
+          <svg id="theme-icon-light" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
+          </svg>
+          <svg id="theme-icon-dark" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+          </svg>
+        </button>
+        <!-- Share button -->
+        <button
+          id="share-btn"
+          type="button"
+          class="p-2 rounded-full hover:bg-white/10 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+          aria-label="Share Fajr time"
+          title="Share"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main id="main-content" class="max-w-2xl mx-auto px-4 py-6 space-y-6">
+
+    <!-- Location Section -->
+    <section class="bg-white/5 backdrop-blur-sm rounded-2xl p-5 border border-white/10 animate-fade-in" aria-labelledby="location-heading">
+      <h2 id="location-heading" class="text-sm font-medium text-white/60 uppercase tracking-wider mb-4">Location</h2>
+
+      <!-- Auto-detect button -->
+      <button
+        id="auto-detect-btn"
+        type="button"
+        class="w-full flex items-center justify-center gap-2 bg-dawn-500 hover:bg-dawn-600 active:bg-dawn-700 text-white font-medium py-3 px-4 rounded-xl transition-all min-h-[44px] mb-4 focus:outline-none focus:ring-2 focus:ring-dawn-400 focus:ring-offset-2 focus:ring-offset-night-900"
+      >
+        <svg id="location-icon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+        </svg>
+        <span id="auto-detect-text">Auto-detect Location</span>
+        <svg id="location-spinner" class="w-5 h-5 animate-spin hidden" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+      </button>
+
+      <!-- Location display -->
+      <div id="location-display" class="hidden mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-xl text-sm">
+        <div class="flex items-start gap-2">
+          <svg class="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+          </svg>
+          <div>
+            <p class="font-medium text-green-400" id="location-name">Location detected</p>
+            <p class="text-white/60" id="location-coords"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Manual input toggle -->
+      <button
+        id="manual-toggle"
+        type="button"
+        class="text-sm text-white/60 hover:text-white transition-colors flex items-center gap-1 mb-3"
+        aria-expanded="false"
+        aria-controls="manual-input-section"
+      >
+        <span id="manual-toggle-text">Enter manually</span>
+        <svg id="manual-toggle-icon" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+        </svg>
+      </button>
+
+      <!-- Manual input section -->
+      <div id="manual-input-section" class="hidden space-y-4" aria-hidden="true">
+        <!-- City search -->
+        <div class="relative">
+          <label for="city-search" class="block text-sm font-medium text-white/80 mb-1">Search city</label>
+          <div class="relative">
+            <input
+              type="text"
+              id="city-search"
+              placeholder="e.g., Manchester, UK"
+              class="w-full bg-white/10 border border-white/20 rounded-xl py-3 px-4 pr-10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-dawn-400 focus:border-transparent transition-all"
+              autocomplete="off"
+            >
+            <svg id="search-spinner" class="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 animate-spin hidden text-white/40" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          </div>
+          <!-- Search results dropdown -->
+          <ul id="search-results" class="absolute z-50 w-full mt-1 bg-night-800 border border-white/20 rounded-xl overflow-hidden shadow-xl hidden" role="listbox"></ul>
+        </div>
+
+        <div class="text-center text-white/40 text-sm">or enter coordinates</div>
+
+        <!-- Latitude -->
+        <div>
+          <label for="latitude" class="block text-sm font-medium text-white/80 mb-1">
+            Latitude
+            <span class="text-white/40 font-normal">(e.g., 53.3325 or 53°19′57″ N)</span>
+          </label>
+          <input
+            type="text"
+            id="latitude"
+            inputmode="decimal"
+            placeholder="53.3325"
+            class="w-full bg-white/10 border border-white/20 rounded-xl py-3 px-4 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-dawn-400 focus:border-transparent transition-all"
+          >
+        </div>
+
+        <!-- Longitude -->
+        <div>
+          <label for="longitude" class="block text-sm font-medium text-white/80 mb-1">
+            Longitude
+            <span class="text-white/40 font-normal">(e.g., -2.1331 or 2°7′59″ W)</span>
+          </label>
+          <input
+            type="text"
+            id="longitude"
+            inputmode="decimal"
+            placeholder="-2.1331"
+            class="w-full bg-white/10 border border-white/20 rounded-xl py-3 px-4 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-dawn-400 focus:border-transparent transition-all"
+          >
+        </div>
+
+        <!-- Elevation -->
+        <div>
+          <label for="elevation" class="block text-sm font-medium text-white/80 mb-1">
+            Elevation
+            <span class="text-white/40 font-normal">(meters above sea level)</span>
+          </label>
+          <div class="flex gap-2">
+            <input
+              type="number"
+              id="elevation"
+              min="0"
+              max="10000"
+              step="1"
+              value="0"
+              placeholder="0"
+              class="flex-1 bg-white/10 border border-white/20 rounded-xl py-3 px-4 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-dawn-400 focus:border-transparent transition-all"
+            >
+            <button
+              id="fetch-elevation-btn"
+              type="button"
+              class="px-4 py-3 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl text-sm font-medium transition-colors min-w-[44px] whitespace-nowrap"
+              title="Auto-fetch elevation"
+            >
+              Auto
+            </button>
+          </div>
+        </div>
+
+        <!-- Apply manual location button -->
+        <button
+          id="apply-manual-btn"
+          type="button"
+          class="w-full bg-white/10 hover:bg-white/20 text-white font-medium py-3 px-4 rounded-xl transition-all min-h-[44px] focus:outline-none focus:ring-2 focus:ring-white/30"
+        >
+          Apply Location
+        </button>
+      </div>
+    </section>
+
+    <!-- Settings Section -->
+    <section class="bg-white/5 backdrop-blur-sm rounded-2xl p-5 border border-white/10 animate-fade-in" style="animation-delay: 0.1s" aria-labelledby="settings-heading">
+      <h2 id="settings-heading" class="sr-only">Calculation Settings</h2>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <!-- Convention selector -->
+        <div>
+          <label for="convention" class="block text-sm font-medium text-white/80 mb-1">Calculation Method</label>
+          <select
+            id="convention"
+            class="w-full bg-white/10 border border-white/20 rounded-xl py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-dawn-400 focus:border-transparent transition-all appearance-none cursor-pointer"
+            style="background-image: url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='white'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E&quot;); background-repeat: no-repeat; background-position: right 0.75rem center; background-size: 1.25rem;"
+          >
+            <option value="MWL">MWL - Muslim World League (18°)</option>
+            <option value="ISNA">ISNA - Islamic Society of North America (15°)</option>
+            <option value="Egypt">Egyptian General Authority (19.5°)</option>
+            <option value="Makkah">Umm al-Qura, Makkah (18.5°)</option>
+            <option value="Karachi">University of Karachi (18°)</option>
+            <option value="Tehran">Institute of Geophysics, Tehran (17.7°)</option>
+            <option value="Singapore">MUIS Singapore (20°)</option>
+            <option value="Custom">Custom angle...</option>
+          </select>
+        </div>
+
+        <!-- Custom angle input (hidden by default) -->
+        <div id="custom-angle-wrapper" class="hidden">
+          <label for="custom-angle" class="block text-sm font-medium text-white/80 mb-1">Custom Fajr Angle</label>
+          <div class="flex items-center gap-2">
+            <input
+              type="number"
+              id="custom-angle"
+              min="10"
+              max="25"
+              step="0.1"
+              value="18"
+              class="flex-1 bg-white/10 border border-white/20 rounded-xl py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-dawn-400 focus:border-transparent transition-all"
+            >
+            <span class="text-white/60">degrees</span>
+          </div>
+        </div>
+
+        <!-- Date picker -->
+        <div>
+          <label for="date" class="block text-sm font-medium text-white/80 mb-1">Date</label>
+          <input
+            type="date"
+            id="date"
+            class="w-full bg-white/10 border border-white/20 rounded-xl py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-dawn-400 focus:border-transparent transition-all cursor-pointer"
+          >
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Prayer Time Display -->
+    <section class="relative overflow-hidden bg-gradient-to-br from-dawn-500/20 via-dawn-600/10 to-night-900 backdrop-blur-sm rounded-2xl p-6 border border-dawn-500/30 animate-fade-in" style="animation-delay: 0.2s" aria-labelledby="fajr-heading">
+      <!-- Dawn gradient overlay -->
+      <div class="absolute inset-0 bg-gradient-to-t from-transparent via-transparent to-dawn-400/10 pointer-events-none" aria-hidden="true"></div>
+
+      <!-- High latitude warning -->
+      <div id="high-lat-warning" class="hidden mb-4 p-3 bg-yellow-500/20 border border-yellow-500/40 rounded-xl text-sm" role="alert">
+        <div class="flex items-start gap-2">
+          <svg class="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+          </svg>
+          <div>
+            <p class="font-medium text-yellow-400">High Latitude Adjustment</p>
+            <p class="text-white/70" id="high-lat-method"></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="relative text-center">
+        <h2 id="fajr-heading" class="text-sm font-medium text-white/60 uppercase tracking-wider mb-2">Fajr Time</h2>
+
+        <!-- Main time display -->
+        <div class="mb-1" aria-live="polite">
+          <span id="fajr-time" class="text-6xl sm:text-7xl font-bold tracking-tight text-white tabular-nums">--:--</span>
+          <span id="fajr-ampm" class="text-2xl sm:text-3xl font-medium text-white/80 ml-2">AM</span>
+        </div>
+
+        <!-- Countdown timer -->
+        <div id="countdown-wrapper" class="mb-4" aria-live="polite">
+          <p class="text-white/60 text-sm" id="countdown-text">
+            <span id="countdown-label">Time until Fajr:</span>
+            <span id="countdown-value" class="font-medium text-dawn-400 ml-1">--:--:--</span>
+          </p>
+        </div>
+
+        <!-- Sunrise -->
+        <div class="inline-flex items-center gap-2 bg-white/10 rounded-full py-2 px-4 text-sm">
+          <svg class="w-4 h-4 text-dawn-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
+          </svg>
+          <span class="text-white/60">Sunrise:</span>
+          <span id="sunrise-time" class="font-medium text-white">--:--</span>
+          <span id="sunrise-ampm" class="text-white/60">AM</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Quick Actions -->
+    <div class="grid grid-cols-2 gap-3 animate-fade-in" style="animation-delay: 0.3s">
+      <!-- View Monthly Calendar -->
+      <button
+        id="calendar-btn"
+        type="button"
+        class="flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl py-3 px-4 transition-all min-h-[44px] focus:outline-none focus:ring-2 focus:ring-white/30"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+        </svg>
+        <span class="text-sm font-medium">Monthly View</span>
+      </button>
+
+      <!-- Save Location -->
+      <button
+        id="save-location-btn"
+        type="button"
+        class="flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl py-3 px-4 transition-all min-h-[44px] focus:outline-none focus:ring-2 focus:ring-white/30"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path>
+        </svg>
+        <span class="text-sm font-medium">Save Location</span>
+      </button>
+    </div>
+
+    <!-- Saved Locations -->
+    <section id="saved-locations-section" class="hidden bg-white/5 backdrop-blur-sm rounded-2xl p-5 border border-white/10 animate-fade-in" aria-labelledby="saved-heading">
+      <h2 id="saved-heading" class="text-sm font-medium text-white/60 uppercase tracking-wider mb-3">Saved Locations</h2>
+      <ul id="saved-locations-list" class="space-y-2" role="list"></ul>
+    </section>
+
+    <!-- Monthly Calendar Modal -->
+    <div id="calendar-modal" class="fixed inset-0 z-50 hidden" role="dialog" aria-modal="true" aria-labelledby="calendar-modal-title">
+      <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" id="calendar-modal-backdrop"></div>
+      <div class="absolute inset-4 sm:inset-8 md:inset-12 lg:inset-16 bg-night-900 rounded-2xl border border-white/10 overflow-hidden flex flex-col max-w-3xl mx-auto">
+        <!-- Modal header -->
+        <div class="flex items-center justify-between p-4 border-b border-white/10">
+          <h3 id="calendar-modal-title" class="text-lg font-semibold">Monthly Fajr Times</h3>
+          <button
+            id="calendar-close-btn"
+            type="button"
+            class="p-2 rounded-full hover:bg-white/10 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+            aria-label="Close calendar"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Month navigation -->
+        <div class="flex items-center justify-between p-4 border-b border-white/10">
+          <button
+            id="prev-month-btn"
+            type="button"
+            class="p-2 rounded-full hover:bg-white/10 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+            aria-label="Previous month"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+            </svg>
+          </button>
+          <h4 id="calendar-month-year" class="text-lg font-medium">December 2024</h4>
+          <button
+            id="next-month-btn"
+            type="button"
+            class="p-2 rounded-full hover:bg-white/10 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+            aria-label="Next month"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Calendar content -->
+        <div class="flex-1 overflow-auto p-4">
+          <table class="w-full text-sm" id="calendar-table">
+            <thead>
+              <tr class="text-white/60">
+                <th class="py-2 font-medium">Day</th>
+                <th class="py-2 font-medium">Date</th>
+                <th class="py-2 font-medium">Fajr</th>
+                <th class="py-2 font-medium">Sunrise</th>
+              </tr>
+            </thead>
+            <tbody id="calendar-body" class="divide-y divide-white/5"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Save Location Modal -->
+    <div id="save-modal" class="fixed inset-0 z-50 hidden" role="dialog" aria-modal="true" aria-labelledby="save-modal-title">
+      <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" id="save-modal-backdrop"></div>
+      <div class="absolute inset-x-4 top-1/2 -translate-y-1/2 bg-night-900 rounded-2xl border border-white/10 p-6 max-w-md mx-auto">
+        <h3 id="save-modal-title" class="text-lg font-semibold mb-4">Save Location</h3>
+        <div class="mb-4">
+          <label for="location-label" class="block text-sm font-medium text-white/80 mb-1">Location Name</label>
+          <input
+            type="text"
+            id="location-label"
+            placeholder="e.g., Home, Work, Mosque"
+            class="w-full bg-white/10 border border-white/20 rounded-xl py-3 px-4 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-dawn-400 focus:border-transparent transition-all"
+          >
+        </div>
+        <div class="flex gap-3">
+          <button
+            id="save-cancel-btn"
+            type="button"
+            class="flex-1 bg-white/10 hover:bg-white/20 text-white font-medium py-3 px-4 rounded-xl transition-all min-h-[44px]"
+          >
+            Cancel
+          </button>
+          <button
+            id="save-confirm-btn"
+            type="button"
+            class="flex-1 bg-dawn-500 hover:bg-dawn-600 text-white font-medium py-3 px-4 rounded-xl transition-all min-h-[44px]"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast notifications -->
+    <div id="toast-container" class="fixed bottom-4 left-4 right-4 z-50 flex flex-col gap-2 pointer-events-none max-w-md mx-auto" aria-live="polite"></div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="max-w-2xl mx-auto px-4 py-6 text-center text-white/40 text-sm">
+    <p>Calculations based on astronomical formulas. Times may vary slightly from local authority announcements.</p>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="js/calculations.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/app.js"></script>
+
+  <!-- Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then(reg => console.log('Service Worker registered'))
+          .catch(err => console.log('Service Worker registration failed:', err));
+      });
+    }
+  </script>
+</body>
+</html>
