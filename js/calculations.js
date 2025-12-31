@@ -196,7 +196,29 @@ const PrayerCalculator = (function() {
   }
 
   /**
-   * Calculate Fajr and Sunrise times
+   * Calculate Asr time based on shadow length
+   * @param {number} noon - Solar noon in decimal hours
+   * @param {number} latitude - Latitude in degrees
+   * @param {number} declination - Solar declination in degrees
+   * @param {number} factor - Shadow factor (1 for Shafi'i, 2 for Hanafi)
+   * @returns {number|null} Asr time in decimal hours
+   */
+  function calculateAsr(noon, latitude, declination, factor = 1) {
+    const latRad = latitude * DEG_TO_RAD;
+    const decRad = declination * DEG_TO_RAD;
+
+    // Calculate the angle when shadow = factor * object height + noon shadow
+    const angle = Math.atan(1 / (factor + Math.tan(Math.abs(latRad - decRad))));
+    const asrAngle = RAD_TO_DEG * Math.asin(Math.sin(angle));
+
+    const asrHA = hourAngle(asrAngle, latitude, declination);
+    if (asrHA === null) return null;
+
+    return noon + (asrHA / DEG_PER_HOUR);
+  }
+
+  /**
+   * Calculate all five prayer times
    * @param {object} options - Calculation options
    * @returns {object} Calculated prayer times and metadata
    */
@@ -208,6 +230,8 @@ const PrayerCalculator = (function() {
       date = new Date(),
       convention = 'MWL',
       customAngle = null,
+      customIshaAngle = null,
+      asrMethod = 'standard', // 'standard' (Shafi'i) or 'hanafi'
       timezone = null,
       highLatMethod = HIGH_LAT_METHODS.SEVENTH_OF_NIGHT
     } = options;
@@ -223,42 +247,60 @@ const PrayerCalculator = (function() {
     const eot = equationOfTime(dayOfYear);
     const noon = solarNoon(longitude, tz, eot);
 
-    // Get Fajr angle from convention or custom
-    let fajrAngle;
-    if (convention === 'Custom' && customAngle !== null) {
-      fajrAngle = customAngle;
-    } else {
-      fajrAngle = CONVENTIONS[convention]?.fajrAngle || 18;
-    }
+    // Get angles from convention or custom
+    const conventionData = CONVENTIONS[convention] || CONVENTIONS.MWL;
+    const fajrAngle = (convention === 'Custom' && customAngle !== null) ? customAngle : conventionData.fajrAngle;
+    const ishaAngle = (convention === 'Custom' && customIshaAngle !== null) ? customIshaAngle : conventionData.ishaAngle;
 
     // Apply elevation adjustment
     const dipAngle = elevationAdjustment(elevation);
 
-    // Sunrise angle is approximately -0.833° (accounting for refraction)
+    // Sunrise/Sunset angle (accounting for refraction and elevation)
     const sunriseAngle = -0.833 - dipAngle;
 
     // Fajr angle (negative, as sun is below horizon)
     const fajrAngleAdjusted = -fajrAngle - dipAngle;
 
+    // Isha angle (negative, as sun is below horizon)
+    const ishaAngleAdjusted = -ishaAngle - dipAngle;
+
     // Calculate hour angles
     const sunriseHA = hourAngle(sunriseAngle, latitude, declination);
+    const sunsetHA = hourAngle(sunriseAngle, latitude, declination);
     const fajrHA = hourAngle(fajrAngleAdjusted, latitude, declination);
+    const ishaHA = hourAngle(ishaAngleAdjusted, latitude, declination);
 
     // Calculate times
     let sunrise = sunriseHA !== null ? noon - (sunriseHA / DEG_PER_HOUR) : null;
+    let sunset = sunsetHA !== null ? noon + (sunsetHA / DEG_PER_HOUR) : null;
     let fajr = fajrHA !== null ? noon - (fajrHA / DEG_PER_HOUR) : null;
 
-    // Calculate sunset for high latitude adjustments
-    const sunsetHA = hourAngle(sunriseAngle, latitude, declination);
-    let sunset = sunsetHA !== null ? noon + (sunsetHA / DEG_PER_HOUR) : null;
+    // Dhuhr is slightly after solar noon (1-2 minutes for precaution)
+    let dhuhr = noon + (2 / 60); // Add 2 minutes
 
-    // Calculate night duration for adjustments
+    // Asr calculation (Shafi'i = 1, Hanafi = 2)
+    const asrFactor = asrMethod === 'hanafi' ? 2 : 1;
+    let asr = calculateAsr(noon, latitude, declination, asrFactor);
+
+    // Maghrib is at sunset
+    let maghrib = sunset;
+
+    // Isha calculation
+    let isha = null;
+    if (convention === 'Makkah') {
+      // Umm al-Qura: Isha is 90 minutes after Maghrib
+      isha = maghrib !== null ? maghrib + 1.5 : null;
+    } else {
+      isha = ishaHA !== null ? noon + (ishaHA / DEG_PER_HOUR) : null;
+    }
+
+    // Calculate night duration for high latitude adjustments
     let nightDuration = null;
     if (sunrise !== null && sunset !== null) {
       nightDuration = 24 - (sunset - sunrise);
     }
 
-    // Apply high latitude adjustment if needed
+    // Apply high latitude adjustment for Fajr if needed
     let highLatWarning = null;
     if (fajr === null && sunrise !== null) {
       const adjusted = applyHighLatitudeAdjustment({
@@ -273,14 +315,24 @@ const PrayerCalculator = (function() {
       highLatWarning = adjusted.methodUsed;
     }
 
-    // Calculate Maghrib (sunset) for additional info
-    const maghrib = sunset;
+    // Apply high latitude adjustment for Isha if needed
+    if (isha === null && sunset !== null && nightDuration !== null) {
+      // Use 1/7 of night after Maghrib for Isha
+      isha = sunset + (nightDuration * 6 / 7);
+      if (isha >= 24) isha -= 24;
+      if (!highLatWarning) {
+        highLatWarning = 'Using adjusted Isha time for high latitude';
+      }
+    }
 
     return {
       fajr: formatTime(fajr),
       sunrise: formatTime(sunrise),
-      sunset: formatTime(sunset),
+      dhuhr: formatTime(dhuhr),
+      asr: formatTime(asr),
       maghrib: formatTime(maghrib),
+      isha: formatTime(isha),
+      sunset: formatTime(sunset),
       solarNoon: formatTime(noon),
       date: date,
       location: {
@@ -291,6 +343,8 @@ const PrayerCalculator = (function() {
       calculation: {
         convention,
         fajrAngle,
+        ishaAngle,
+        asrMethod,
         declination: declination.toFixed(2),
         equationOfTime: eot.toFixed(2),
         dayOfYear
@@ -299,6 +353,10 @@ const PrayerCalculator = (function() {
       rawHours: {
         fajr,
         sunrise,
+        dhuhr,
+        asr,
+        maghrib,
+        isha,
         sunset
       }
     };
@@ -324,11 +382,148 @@ const PrayerCalculator = (function() {
         dayName: date.toLocaleDateString('en-US', { weekday: 'short' }),
         fajr: result.fajr,
         sunrise: result.sunrise,
-        highLatWarning: result.highLatWarning
+        dhuhr: result.dhuhr,
+        asr: result.asr,
+        maghrib: result.maghrib,
+        isha: result.isha,
+        highLatWarning: result.highLatWarning,
+        rawHours: result.rawHours
       });
     }
 
     return results;
+  }
+
+  /**
+   * Generate ICS calendar file content for prayer times
+   * @param {object} options - Options including location, dates, and preferences
+   * @returns {string} ICS file content
+   */
+  function generateICS(options) {
+    const {
+      latitude,
+      longitude,
+      elevation = 0,
+      convention = 'MWL',
+      locationName = 'Prayer Location',
+      daysAhead = 30,
+      alarmMinutes = 15, // Minutes before prayer for alarm
+      includeAlarm = true
+    } = options;
+
+    const startDate = new Date();
+    startDate.setHours(0, 0, 0, 0);
+
+    const prayers = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'];
+    const prayerNames = {
+      fajr: 'Fajr',
+      dhuhr: 'Dhuhr',
+      asr: 'Asr',
+      maghrib: 'Maghrib',
+      isha: 'Isha'
+    };
+
+    let icsContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Fajr Prayer Calculator//Prayer Times//EN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      'X-WR-CALNAME:Prayer Times',
+      'X-WR-TIMEZONE:' + Intl.DateTimeFormat().resolvedOptions().timeZone
+    ];
+
+    // Generate events for each day
+    for (let i = 0; i < daysAhead; i++) {
+      const date = new Date(startDate);
+      date.setDate(date.getDate() + i);
+
+      const result = calculate({
+        latitude,
+        longitude,
+        elevation,
+        convention,
+        date
+      });
+
+      // Create event for each prayer
+      prayers.forEach(prayer => {
+        const prayerTime = result[prayer];
+        if (prayerTime && prayerTime.time24 !== '--:--') {
+          const [hours, minutes] = prayerTime.time24.split(':').map(Number);
+
+          // Create event datetime
+          const eventDate = new Date(date);
+          eventDate.setHours(hours, minutes, 0, 0);
+
+          // Generate unique ID based on date and prayer
+          const dateStr = date.toISOString().split('T')[0].replace(/-/g, '');
+          const uid = `${dateStr}-${prayer}@prayertimes`;
+
+          // Format dates for ICS
+          const dtStart = formatICSDate(eventDate);
+          const dtEnd = formatICSDate(new Date(eventDate.getTime() + 30 * 60000)); // 30 min duration
+          const dtStamp = formatICSDate(new Date());
+
+          icsContent.push('BEGIN:VEVENT');
+          icsContent.push(`UID:${uid}`);
+          icsContent.push(`DTSTAMP:${dtStamp}`);
+          icsContent.push(`DTSTART:${dtStart}`);
+          icsContent.push(`DTEND:${dtEnd}`);
+          icsContent.push(`SUMMARY:${prayerNames[prayer]} Prayer`);
+          icsContent.push(`DESCRIPTION:${prayerNames[prayer]} prayer time for ${locationName}`);
+          icsContent.push(`LOCATION:${locationName}`);
+          icsContent.push('STATUS:CONFIRMED');
+          icsContent.push('TRANSP:TRANSPARENT');
+
+          // Add alarm
+          if (includeAlarm) {
+            icsContent.push('BEGIN:VALARM');
+            icsContent.push('TRIGGER:-PT' + alarmMinutes + 'M');
+            icsContent.push('ACTION:DISPLAY');
+            icsContent.push(`DESCRIPTION:${prayerNames[prayer]} prayer in ${alarmMinutes} minutes`);
+            icsContent.push('END:VALARM');
+          }
+
+          icsContent.push('END:VEVENT');
+        }
+      });
+    }
+
+    icsContent.push('END:VCALENDAR');
+    return icsContent.join('\r\n');
+  }
+
+  /**
+   * Format date for ICS format (YYYYMMDDTHHMMSS)
+   * @param {Date} date - Date to format
+   * @returns {string} Formatted date string
+   */
+  function formatICSDate(date) {
+    const pad = (n) => n.toString().padStart(2, '0');
+    return date.getFullYear() +
+           pad(date.getMonth() + 1) +
+           pad(date.getDate()) + 'T' +
+           pad(date.getHours()) +
+           pad(date.getMinutes()) +
+           pad(date.getSeconds());
+  }
+
+  /**
+   * Download ICS file
+   * @param {string} content - ICS file content
+   * @param {string} filename - Filename for download
+   */
+  function downloadICS(content, filename = 'prayer-times.ics') {
+    const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   }
 
   /**
@@ -434,6 +629,8 @@ const PrayerCalculator = (function() {
   return {
     calculate,
     calculateMonth,
+    generateICS,
+    downloadICS,
     parseDMS,
     formatDMS,
     formatTime,

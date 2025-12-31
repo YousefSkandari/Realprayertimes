@@ -409,6 +409,28 @@
         </svg>
         <span class="text-sm font-medium">Save Location</span>
       </button>
+
+      <!-- Add to Calendar -->
+      <button
+        id="download-calendar-btn"
+        type="button"
+        class="col-span-2 flex items-center justify-center gap-2 bg-dawn-500/20 hover:bg-dawn-500/30 border border-dawn-500/30 rounded-xl py-3 px-4 transition-all min-h-[44px] focus:outline-none focus:ring-2 focus:ring-dawn-400/30"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+        </svg>
+        <span class="text-sm font-medium">Add to Phone Calendar (30 days)</span>
+      </button>
+    </div>
+
+    <!-- Calendar Instructions -->
+    <div id="calendar-instructions" class="hidden bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 text-sm animate-fade-in">
+      <p class="font-medium text-blue-400 mb-2">How to use:</p>
+      <ol class="text-white/70 space-y-1 list-decimal list-inside">
+        <li>Create a new calendar called "Prayer Times" in your calendar app</li>
+        <li>Import the downloaded file into that calendar</li>
+        <li>To remove all prayers: just delete the "Prayer Times" calendar</li>
+      </ol>
     </div>
 
     <!-- Saved Locations -->

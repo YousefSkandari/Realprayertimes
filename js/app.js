@@ -73,6 +73,8 @@
     // Quick actions
     elements.calendarBtn = document.getElementById('calendar-btn');
     elements.saveLocationBtn = document.getElementById('save-location-btn');
+    elements.downloadCalendarBtn = document.getElementById('download-calendar-btn');
+    elements.calendarInstructions = document.getElementById('calendar-instructions');
 
     // Saved locations
     elements.savedLocationsSection = document.getElementById('saved-locations-section');
@@ -200,6 +202,11 @@
     elements.saveModalBackdrop.addEventListener('click', closeSaveModal);
     elements.saveCancelBtn.addEventListener('click', closeSaveModal);
     elements.saveConfirmBtn.addEventListener('click', confirmSaveLocation);
+
+    // Download calendar
+    if (elements.downloadCalendarBtn) {
+      elements.downloadCalendarBtn.addEventListener('click', downloadCalendar);
+    }
 
     // Keyboard navigation
     document.addEventListener('keydown', handleGlobalKeydown);
@@ -970,6 +977,34 @@ Calculation: ${state.convention}`;
       showToast('Copied to clipboard', 'success');
     } catch (e) {
       showToast('Unable to copy', 'error');
+    }
+  }
+
+  // ============ Calendar Download ============
+
+  function downloadCalendar() {
+    if (!state.location) {
+      showToast('Please set a location first', 'error');
+      return;
+    }
+
+    try {
+      const icsContent = PrayerCalculator.generateICS({
+        latitude: state.location.lat,
+        longitude: state.location.lon,
+        elevation: state.elevation,
+        convention: state.convention,
+        locationName: state.locationName || 'Prayer Location',
+        daysAhead: 30,
+        alarmMinutes: 15,
+        includeAlarm: true
+      });
+
+      PrayerCalculator.downloadICS(icsContent, 'prayer-times.ics');
+      showToast('Calendar downloaded! Import to a new calendar for easy deletion.', 'success');
+    } catch (error) {
+      console.error('Calendar generation error:', error);
+      showToast('Failed to generate calendar. Please try again.', 'error');
     }
   }
 
