@@ -152,6 +152,16 @@
     // Auto-detect location
     elements.autoDetectBtn.addEventListener('click', autoDetectLocation);
 
+    // Quick city buttons
+    document.querySelectorAll('.quick-city-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const lat = parseFloat(btn.dataset.lat);
+        const lon = parseFloat(btn.dataset.lon);
+        const name = btn.dataset.name;
+        selectQuickCity(lat, lon, name);
+      });
+    });
+
     // Manual input toggle
     elements.manualToggle.addEventListener('click', toggleManualInput);
 
@@ -453,6 +463,27 @@
     if (elements.manualInputSection.classList.contains('hidden')) {
       toggleManualInput();
     }
+  }
+
+  function selectQuickCity(lat, lon, name) {
+    state.location = { lat, lon };
+    state.locationName = name;
+    state.elevation = 0;
+
+    showLocationDisplay(name, lat, lon);
+    elements.latitudeInput.value = lat.toFixed(6);
+    elements.longitudeInput.value = lon.toFixed(6);
+    elements.elevationInput.value = 0;
+
+    StorageManager.saveLastLocation({
+      latitude: lat,
+      longitude: lon,
+      elevation: 0,
+      name
+    });
+
+    calculateAndDisplay();
+    showToast(`Location set to ${name.split(',')[0]}`, 'success');
   }
 
   async function reverseGeocode(lat, lon) {

@@ -138,7 +138,7 @@
       <button
         id="auto-detect-btn"
         type="button"
-        class="w-full flex items-center justify-center gap-2 bg-dawn-500 hover:bg-dawn-600 active:bg-dawn-700 text-white font-medium py-3 px-4 rounded-xl transition-all min-h-[44px] mb-4 focus:outline-none focus:ring-2 focus:ring-dawn-400 focus:ring-offset-2 focus:ring-offset-night-900"
+        class="w-full flex items-center justify-center gap-2 bg-dawn-500 hover:bg-dawn-600 active:bg-dawn-700 text-white font-medium py-3 px-4 rounded-xl transition-all min-h-[44px] mb-3 focus:outline-none focus:ring-2 focus:ring-dawn-400 focus:ring-offset-2 focus:ring-offset-night-900"
       >
         <svg id="location-icon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
@@ -150,6 +150,19 @@
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
         </svg>
       </button>
+
+      <!-- Quick city selection -->
+      <div class="mb-4">
+        <p class="text-xs text-white/50 mb-2 text-center">Or select a city:</p>
+        <div class="flex flex-wrap gap-2 justify-center" id="quick-cities">
+          <button type="button" class="quick-city-btn px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-colors" data-lat="21.4225" data-lon="39.8262" data-name="Makkah, Saudi Arabia">Makkah</button>
+          <button type="button" class="quick-city-btn px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-colors" data-lat="24.4686" data-lon="39.6142" data-name="Madinah, Saudi Arabia">Madinah</button>
+          <button type="button" class="quick-city-btn px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-colors" data-lat="51.5074" data-lon="-0.1278" data-name="London, UK">London</button>
+          <button type="button" class="quick-city-btn px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-colors" data-lat="53.4808" data-lon="-2.2426" data-name="Manchester, UK">Manchester</button>
+          <button type="button" class="quick-city-btn px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-colors" data-lat="40.7128" data-lon="-74.0060" data-name="New York, USA">New York</button>
+          <button type="button" class="quick-city-btn px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition-colors" data-lat="25.2048" data-lon="55.2708" data-name="Dubai, UAE">Dubai</button>
+        </div>
+      </div>
 
       <!-- Location display -->
       <div id="location-display" class="hidden mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-xl text-sm">
