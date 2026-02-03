@@ -15,6 +15,10 @@ const PrayerGlobe = (function() {
   const RAD_TO_DEG = 180 / Math.PI;
   const PRAYER_WINDOW_HOURS = 0.5; // 30-minute prayer window
 
+  // Earth texture URL (NASA Blue Marble)
+  const EARTH_TEXTURE_URL = 'https://unpkg.com/three-globe@2.31.0/example/img/earth-blue-marble.jpg';
+  const EARTH_BUMP_URL = 'https://unpkg.com/three-globe@2.31.0/example/img/earth-topology.png';
+
   // Prayer configuration with colors
   const PRAYERS = {
     fajr:    { name: 'Fajr',    color: '#818cf8', hex: 0x818cf8, angle: -18 },
@@ -252,12 +256,12 @@ const PrayerGlobe = (function() {
    */
   function createArcGeometry(start, end, segments = 8) {
     const points = [];
-    const startVec = latLngToVector3(start.lat, start.lng, 1.005);
-    const endVec = latLngToVector3(end.lat, end.lng, 1.005);
+    const startVec = latLngToVector3(start.lat, start.lng, 1.008);
+    const endVec = latLngToVector3(end.lat, end.lng, 1.008);
 
     for (let i = 0; i <= segments; i++) {
       const t = i / segments;
-      const point = new THREE.Vector3().lerpVectors(startVec, endVec, t).normalize().multiplyScalar(1.005);
+      const point = new THREE.Vector3().lerpVectors(startVec, endVec, t).normalize().multiplyScalar(1.008);
       points.push(point);
     }
 
@@ -287,28 +291,39 @@ const PrayerGlobe = (function() {
     );
     camera.position.set(0, 0, 3);
 
-    // Renderer
-    renderer = new THREE.WebGLRenderer({ antialias: true });
+    // Renderer with better settings
+    renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: true,
+      powerPreference: 'high-performance'
+    });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.domElement.style.touchAction = 'none';
     container.appendChild(renderer.domElement);
 
-    // Orbit controls
+    // Orbit controls - check if available
     if (typeof THREE.OrbitControls !== 'undefined') {
       controls = new THREE.OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
-      controls.dampingFactor = 0.05;
-      controls.minDistance = 1.5;
-      controls.maxDistance = 10;
+      controls.dampingFactor = 0.08;
+      controls.rotateSpeed = 0.5;
+      controls.minDistance = 1.3;
+      controls.maxDistance = 6;
+      controls.enablePan = false;
       controls.autoRotate = autoRotate;
-      controls.autoRotateSpeed = 0.5;
+      controls.autoRotateSpeed = 0.3;
+      // Enable touch
+      controls.touches = {
+        ONE: THREE.TOUCH.ROTATE,
+        TWO: THREE.TOUCH.DOLLY_ROTATE
+      };
+    } else {
+      console.warn('OrbitControls not available, manual rotation disabled');
     }
 
-    // Create globe
+    // Create globe with Earth texture
     createGlobe();
-
-    // Create grid lines
-    createGridLines();
 
     // Create Mecca marker
     createMeccaMarker();
@@ -317,12 +332,12 @@ const PrayerGlobe = (function() {
     rowSegments = generateRowSegments(rowInterval);
     createRowMeshes();
 
-    // Ambient light
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
     scene.add(ambientLight);
 
     // Directional light (sun)
-    const sunLight = new THREE.DirectionalLight(0xffffff, 1);
+    const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
     sunLight.position.set(5, 3, 5);
     scene.add(sunLight);
 
@@ -334,48 +349,53 @@ const PrayerGlobe = (function() {
   }
 
   /**
-   * Create the Earth globe
+   * Create the Earth globe with texture
    */
   function createGlobe() {
-    // Earth sphere with gradient
     const geometry = new THREE.SphereGeometry(1, 64, 64);
+    const textureLoader = new THREE.TextureLoader();
 
-    // Create gradient texture
-    const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 256;
-    const ctx = canvas.getContext('2d');
-
-    // Blue ocean gradient
-    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    gradient.addColorStop(0, '#1a365d');
-    gradient.addColorStop(0.5, '#2d5a87');
-    gradient.addColorStop(1, '#1a365d');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Add some noise for variation
-    for (let i = 0; i < 1000; i++) {
-      const x = Math.random() * canvas.width;
-      const y = Math.random() * canvas.height;
-      ctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.02})`;
-      ctx.fillRect(x, y, 2, 2);
-    }
-
-    const texture = new THREE.CanvasTexture(canvas);
-
-    const material = new THREE.MeshPhongMaterial({
-      map: texture,
-      shininess: 5,
-      transparent: true,
-      opacity: 0.9
+    // Create a basic material first (fallback)
+    const fallbackMaterial = new THREE.MeshPhongMaterial({
+      color: 0x2d5a87,
+      shininess: 5
     });
 
-    globe = new THREE.Mesh(geometry, material);
+    globe = new THREE.Mesh(geometry, fallbackMaterial);
     scene.add(globe);
 
+    // Load Earth texture
+    textureLoader.load(
+      EARTH_TEXTURE_URL,
+      (texture) => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        globe.material = new THREE.MeshPhongMaterial({
+          map: texture,
+          shininess: 10,
+          specular: new THREE.Color(0x333333)
+        });
+
+        // Try to load bump map for extra detail
+        textureLoader.load(
+          EARTH_BUMP_URL,
+          (bumpTexture) => {
+            globe.material.bumpMap = bumpTexture;
+            globe.material.bumpScale = 0.02;
+            globe.material.needsUpdate = true;
+          },
+          undefined,
+          () => {} // Silently fail on bump map
+        );
+      },
+      undefined,
+      (error) => {
+        console.warn('Could not load Earth texture, using fallback:', error);
+        // Keep the fallback material
+      }
+    );
+
     // Atmosphere glow
-    const atmosphereGeometry = new THREE.SphereGeometry(1.02, 64, 64);
+    const atmosphereGeometry = new THREE.SphereGeometry(1.03, 64, 64);
     const atmosphereMaterial = new THREE.ShaderMaterial({
       vertexShader: `
         varying vec3 vNormal;
@@ -387,8 +407,8 @@ const PrayerGlobe = (function() {
       fragmentShader: `
         varying vec3 vNormal;
         void main() {
-          float intensity = pow(0.7 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.0);
-          gl_FragColor = vec4(0.3, 0.6, 1.0, 1.0) * intensity;
+          float intensity = pow(0.65 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.0);
+          gl_FragColor = vec4(0.3, 0.6, 1.0, 1.0) * intensity * 0.8;
         }
       `,
       blending: THREE.AdditiveBlending,
@@ -401,57 +421,24 @@ const PrayerGlobe = (function() {
   }
 
   /**
-   * Create lat/lng grid lines
-   */
-  function createGridLines() {
-    const gridMaterial = new THREE.LineBasicMaterial({
-      color: 0x3a5f8f,
-      transparent: true,
-      opacity: 0.3
-    });
-
-    // Latitude lines
-    for (let lat = -80; lat <= 80; lat += 20) {
-      const points = [];
-      for (let lng = 0; lng <= 360; lng += 5) {
-        points.push(latLngToVector3(lat, lng, 1.001));
-      }
-      const geometry = new THREE.BufferGeometry().setFromPoints(points);
-      const line = new THREE.Line(geometry, gridMaterial);
-      scene.add(line);
-    }
-
-    // Longitude lines
-    for (let lng = 0; lng < 360; lng += 20) {
-      const points = [];
-      for (let lat = -90; lat <= 90; lat += 5) {
-        points.push(latLngToVector3(lat, lng, 1.001));
-      }
-      const geometry = new THREE.BufferGeometry().setFromPoints(points);
-      const line = new THREE.Line(geometry, gridMaterial);
-      scene.add(line);
-    }
-  }
-
-  /**
    * Create Mecca marker
    */
   function createMeccaMarker() {
     // Golden sphere at Kaaba
-    const markerGeometry = new THREE.SphereGeometry(0.02, 16, 16);
+    const markerGeometry = new THREE.SphereGeometry(0.025, 16, 16);
     const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xffd700 });
     meccaMarker = new THREE.Mesh(markerGeometry, markerMaterial);
 
-    const pos = latLngToVector3(MECCA.lat, MECCA.lng, 1.02);
+    const pos = latLngToVector3(MECCA.lat, MECCA.lng, 1.025);
     meccaMarker.position.copy(pos);
     scene.add(meccaMarker);
 
     // Glow effect
-    const glowGeometry = new THREE.SphereGeometry(0.04, 16, 16);
+    const glowGeometry = new THREE.SphereGeometry(0.05, 16, 16);
     const glowMaterial = new THREE.MeshBasicMaterial({
       color: 0xffd700,
       transparent: true,
-      opacity: 0.3
+      opacity: 0.4
     });
     meccaGlow = new THREE.Mesh(glowGeometry, glowMaterial);
     meccaGlow.position.copy(pos);
@@ -469,7 +456,7 @@ const PrayerGlobe = (function() {
     const defaultMaterial = new THREE.LineBasicMaterial({
       color: 0x4a5568,
       transparent: true,
-      opacity: 0.2
+      opacity: 0.25
     });
 
     rowSegments.forEach((segment, index) => {
@@ -497,7 +484,7 @@ const PrayerGlobe = (function() {
       if (prayer && (selectedPrayer === 'all' || selectedPrayer === prayer)) {
         const prayerInfo = PRAYERS[prayer];
         mesh.material.color.setHex(prayerInfo.hex);
-        mesh.material.opacity = 0.8;
+        mesh.material.opacity = 0.85;
         prayerCounts[prayer]++;
       } else {
         mesh.material.color.setHex(0x4a5568);
@@ -541,7 +528,7 @@ const PrayerGlobe = (function() {
 
     // Pulse Mecca glow
     if (meccaGlow) {
-      meccaGlow.scale.setScalar(1 + 0.1 * Math.sin(timestamp / 500));
+      meccaGlow.scale.setScalar(1 + 0.15 * Math.sin(timestamp / 400));
     }
 
     renderer.render(scene, camera);

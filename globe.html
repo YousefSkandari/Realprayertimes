@@ -17,9 +17,9 @@
   <!-- PWA Manifest -->
   <link rel="manifest" href="manifest.json">
 
-  <!-- Three.js from CDN -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+  <!-- Three.js from CDN - using unpkg for better compatibility -->
+  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
 
   <!-- Tailwind CSS via CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -59,6 +59,7 @@
       overflow: hidden;
       background: #0a0a1a;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      touch-action: none;
     }
 
     #globe-container {
@@ -67,10 +68,12 @@
       position: fixed;
       top: 0;
       left: 0;
+      touch-action: none;
     }
 
     #globe-container canvas {
       display: block;
+      touch-action: none;
     }
 
     .overlay {
@@ -150,13 +153,26 @@
       border: none;
     }
 
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
+    /* Collapsible panel styles */
+    .collapsible-content {
+      max-height: 500px;
+      overflow: hidden;
+      transition: max-height 0.3s ease-out, padding 0.3s ease-out, opacity 0.3s ease-out;
     }
 
-    .animate-pulse-slow {
-      animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    .collapsible-content.collapsed {
+      max-height: 0;
+      padding-top: 0;
+      padding-bottom: 0;
+      opacity: 0;
+    }
+
+    .collapse-icon {
+      transition: transform 0.3s ease-out;
+    }
+
+    .collapsed .collapse-icon {
+      transform: rotate(180deg);
     }
 
     /* Mobile optimizations */
@@ -176,48 +192,60 @@
 
   <!-- Top Left: Time Display -->
   <div class="overlay top-4 left-4">
-    <div class="glass rounded-2xl p-4 min-w-[180px]">
+    <div class="glass rounded-2xl p-4 min-w-[140px]">
       <div class="text-xs text-white/60 uppercase tracking-wider mb-1">UTC Time</div>
       <div id="time-display" class="text-2xl font-bold tabular-nums">00:00:00</div>
       <div id="date-display" class="text-sm text-white/60 mt-1">Mon, Jan 1, 2024</div>
     </div>
   </div>
 
-  <!-- Top Right: Prayer Counts -->
+  <!-- Top Right: Prayer Counts (Collapsible) -->
   <div class="overlay top-4 right-4">
-    <div class="glass rounded-2xl p-4">
-      <div class="text-xs text-white/60 uppercase tracking-wider mb-2">Praying Now</div>
-      <div id="prayer-counts" class="space-y-1 text-sm">
+    <div class="glass rounded-2xl overflow-hidden">
+      <!-- Header - always visible -->
+      <button id="stats-toggle" class="w-full flex items-center justify-between p-3 hover:bg-white/5 transition-colors">
         <div class="flex items-center gap-2">
-          <span class="w-3 h-3 rounded-full bg-prayer-fajr"></span>
-          <span class="flex-1">Fajr</span>
-          <span id="count-fajr" class="tabular-nums font-medium">0</span>
+          <span class="text-xs text-white/60 uppercase tracking-wider">Praying Now</span>
+          <span id="count-total-mini" class="text-sm font-bold text-prayer-fajr tabular-nums">0</span>
         </div>
-        <div class="flex items-center gap-2">
-          <span class="w-3 h-3 rounded-full bg-prayer-dhuhr"></span>
-          <span class="flex-1">Dhuhr</span>
-          <span id="count-dhuhr" class="tabular-nums font-medium">0</span>
+        <svg class="collapse-icon w-4 h-4 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>
+        </svg>
+      </button>
+      <!-- Collapsible content -->
+      <div id="stats-content" class="collapsible-content px-4 pb-4">
+        <div id="prayer-counts" class="space-y-1 text-sm">
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-prayer-fajr"></span>
+            <span class="flex-1">Fajr</span>
+            <span id="count-fajr" class="tabular-nums font-medium">0</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-prayer-dhuhr"></span>
+            <span class="flex-1">Dhuhr</span>
+            <span id="count-dhuhr" class="tabular-nums font-medium">0</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-prayer-asr"></span>
+            <span class="flex-1">Asr</span>
+            <span id="count-asr" class="tabular-nums font-medium">0</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-prayer-maghrib"></span>
+            <span class="flex-1">Maghrib</span>
+            <span id="count-maghrib" class="tabular-nums font-medium">0</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-prayer-isha"></span>
+            <span class="flex-1">Isha</span>
+            <span id="count-isha" class="tabular-nums font-medium">0</span>
+          </div>
         </div>
-        <div class="flex items-center gap-2">
-          <span class="w-3 h-3 rounded-full bg-prayer-asr"></span>
-          <span class="flex-1">Asr</span>
-          <span id="count-asr" class="tabular-nums font-medium">0</span>
-        </div>
-        <div class="flex items-center gap-2">
-          <span class="w-3 h-3 rounded-full bg-prayer-maghrib"></span>
-          <span class="flex-1">Maghrib</span>
-          <span id="count-maghrib" class="tabular-nums font-medium">0</span>
-        </div>
-        <div class="flex items-center gap-2">
-          <span class="w-3 h-3 rounded-full bg-prayer-isha"></span>
-          <span class="flex-1">Isha</span>
-          <span id="count-isha" class="tabular-nums font-medium">0</span>
-        </div>
-      </div>
-      <div class="mt-3 pt-3 border-t border-white/10">
-        <div class="flex items-center justify-between text-sm">
-          <span class="text-white/60">Total Segments</span>
-          <span id="count-total" class="tabular-nums font-bold text-prayer-fajr">0</span>
+        <div class="mt-3 pt-3 border-t border-white/10">
+          <div class="flex items-center justify-between text-sm">
+            <span class="text-white/60">Total Segments</span>
+            <span id="count-total" class="tabular-nums font-bold text-prayer-fajr">0</span>
+          </div>
         </div>
       </div>
     </div>
@@ -226,15 +254,23 @@
   <!-- Bottom Center: Control Bar -->
   <div class="overlay bottom-4 left-4 right-4">
     <div class="max-w-lg mx-auto">
-      <!-- Prayer Filter Buttons -->
-      <div class="glass rounded-2xl p-3 mb-3">
-        <div class="flex flex-wrap justify-center gap-2">
-          <button id="filter-all" class="prayer-btn active bg-white/10 text-white" data-prayer="all">All</button>
-          <button id="filter-fajr" class="prayer-btn text-prayer-fajr" data-prayer="fajr">Fajr</button>
-          <button id="filter-dhuhr" class="prayer-btn text-prayer-dhuhr" data-prayer="dhuhr">Dhuhr</button>
-          <button id="filter-asr" class="prayer-btn text-prayer-asr" data-prayer="asr">Asr</button>
-          <button id="filter-maghrib" class="prayer-btn text-prayer-maghrib" data-prayer="maghrib">Maghrib</button>
-          <button id="filter-isha" class="prayer-btn text-prayer-isha" data-prayer="isha">Isha</button>
+      <!-- Prayer Filter Buttons (Collapsible) -->
+      <div class="glass rounded-2xl mb-3 overflow-hidden">
+        <button id="filter-toggle" class="w-full flex items-center justify-between p-3 hover:bg-white/5 transition-colors">
+          <span class="text-xs text-white/60 uppercase tracking-wider">Prayer Filter</span>
+          <svg class="collapse-icon w-4 h-4 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+          </svg>
+        </button>
+        <div id="filter-content" class="collapsible-content collapsed px-3 pb-3">
+          <div class="flex flex-wrap justify-center gap-2">
+            <button id="filter-all" class="prayer-btn active bg-white/10 text-white" data-prayer="all">All</button>
+            <button id="filter-fajr" class="prayer-btn text-prayer-fajr" data-prayer="fajr">Fajr</button>
+            <button id="filter-dhuhr" class="prayer-btn text-prayer-dhuhr" data-prayer="dhuhr">Dhuhr</button>
+            <button id="filter-asr" class="prayer-btn text-prayer-asr" data-prayer="asr">Asr</button>
+            <button id="filter-maghrib" class="prayer-btn text-prayer-maghrib" data-prayer="maghrib">Maghrib</button>
+            <button id="filter-isha" class="prayer-btn text-prayer-isha" data-prayer="isha">Isha</button>
+          </div>
         </div>
       </div>
 
@@ -342,7 +378,8 @@
       <!-- Info -->
       <div class="text-xs text-white/40 border-t border-white/10 pt-3 mt-3">
         <p class="mb-1"><strong class="text-white/60">Mecca</strong> is marked with a golden sphere</p>
-        <p><strong class="text-white/60">Rows</strong> light up when it's prayer time at that location</p>
+        <p class="mb-1"><strong class="text-white/60">Drag</strong> to rotate the globe manually</p>
+        <p><strong class="text-white/60">Pinch</strong> to zoom in/out</p>
       </div>
     </div>
   </div>
@@ -363,6 +400,12 @@
     const dateDisplay = document.getElementById('date-display');
     const loadingOverlay = document.getElementById('loading-overlay');
     const settingsPanel = document.getElementById('settings-panel');
+
+    // Collapsible panels
+    const statsToggle = document.getElementById('stats-toggle');
+    const statsContent = document.getElementById('stats-content');
+    const filterToggle = document.getElementById('filter-toggle');
+    const filterContent = document.getElementById('filter-content');
 
     // Buttons
     const btnPlay = document.getElementById('btn-play');
@@ -393,8 +436,22 @@
       asr: document.getElementById('count-asr'),
       maghrib: document.getElementById('count-maghrib'),
       isha: document.getElementById('count-isha'),
-      total: document.getElementById('count-total')
+      total: document.getElementById('count-total'),
+      totalMini: document.getElementById('count-total-mini')
     };
+
+    // Collapsible panel toggles
+    statsToggle.addEventListener('click', () => {
+      statsContent.classList.toggle('collapsed');
+      statsToggle.querySelector('.collapse-icon').style.transform =
+        statsContent.classList.contains('collapsed') ? 'rotate(180deg)' : '';
+    });
+
+    filterToggle.addEventListener('click', () => {
+      filterContent.classList.toggle('collapsed');
+      filterToggle.querySelector('.collapse-icon').style.transform =
+        filterContent.classList.contains('collapsed') ? '' : 'rotate(180deg)';
+    });
 
     // Initialize globe
     window.addEventListener('DOMContentLoaded', () => {
@@ -408,7 +465,7 @@
         setTimeout(() => {
           loadingOverlay.style.display = 'none';
         }, 500);
-      }, 1000);
+      }, 1500);
     });
 
     // Update time display
@@ -433,6 +490,7 @@
         total += count;
       }
       countElements.total.textContent = total;
+      countElements.totalMini.textContent = total;
     });
 
     // Play/Pause
@@ -536,14 +594,6 @@
           break;
       }
     });
-
-    // Prevent double-tap zoom on mobile
-    document.addEventListener('touchend', (e) => {
-      if (e.target.tagName === 'BUTTON' || e.target.tagName === 'A') {
-        e.preventDefault();
-        e.target.click();
-      }
-    }, { passive: false });
   </script>
 </body>
 </html>
