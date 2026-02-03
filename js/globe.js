@@ -15,9 +15,9 @@ const PrayerGlobe = (function() {
   const RAD_TO_DEG = 180 / Math.PI;
   const PRAYER_WINDOW_HOURS = 0.5; // 30-minute prayer window
 
-  // Earth texture URL (NASA Blue Marble)
+  // Earth texture URLs
   const EARTH_TEXTURE_URL = 'https://unpkg.com/three-globe@2.31.0/example/img/earth-blue-marble.jpg';
-  const EARTH_BUMP_URL = 'https://unpkg.com/three-globe@2.31.0/example/img/earth-topology.png';
+  const LAND_MASK_URL = 'https://unpkg.com/three-globe@2.31.0/example/img/earth-water.png';
 
   // Prayer configuration with colors
   const PRAYERS = {
@@ -31,8 +31,8 @@ const PrayerGlobe = (function() {
   // State
   let scene, camera, renderer, controls;
   let globe, meccaMarker, meccaGlow;
-  let rowSegments = [];
-  let rowMeshes = [];
+  let prayerLines = [];
+  let qiblaLines = [];
   let animationId;
   let currentTime = new Date();
   let isPlaying = true;
@@ -43,6 +43,13 @@ const PrayerGlobe = (function() {
   let container;
   let lastFrameTime = 0;
   let autoRotate = true;
+  let landMaskData = null;
+  let landMaskCanvas = null;
+
+  // Touch/drag state for manual controls
+  let isDragging = false;
+  let previousMousePosition = { x: 0, y: 0 };
+  let spherical = { theta: 0, phi: Math.PI / 2, radius: 3 };
 
   /**
    * Convert latitude/longitude to 3D coordinates
@@ -83,6 +90,76 @@ const PrayerGlobe = (function() {
   }
 
   /**
+   * Calculate bearing from point to Mecca (Qibla direction)
+   */
+  function calculateQibla(lat, lng) {
+    const lat1 = DEG_TO_RAD * lat;
+    const lat2 = DEG_TO_RAD * MECCA.lat;
+    const dLng = DEG_TO_RAD * (MECCA.lng - lng);
+
+    const y = Math.sin(dLng) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+
+    return (RAD_TO_DEG * Math.atan2(y, x) + 360) % 360;
+  }
+
+  /**
+   * Calculate distance between two points
+   */
+  function haversineDistance(lat1, lng1, lat2, lng2) {
+    const dLat = DEG_TO_RAD * (lat2 - lat1);
+    const dLng = DEG_TO_RAD * (lng2 - lng1);
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(DEG_TO_RAD * lat1) * Math.cos(DEG_TO_RAD * lat2) *
+              Math.sin(dLng/2) * Math.sin(dLng/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return EARTH_RADIUS_KM * c;
+  }
+
+  /**
+   * Check if a point is on land using the land mask
+   */
+  function isOnLand(lat, lng) {
+    if (!landMaskData || !landMaskCanvas) return true; // Default to showing if no mask
+
+    // Convert lat/lng to pixel coordinates
+    const x = Math.floor(((lng + 180) / 360) * landMaskCanvas.width);
+    const y = Math.floor(((90 - lat) / 180) * landMaskCanvas.height);
+
+    // Get pixel index
+    const idx = (y * landMaskCanvas.width + x) * 4;
+
+    // Land is darker in the water mask (water is lighter/white)
+    // So if the pixel is dark (low value), it's land
+    const brightness = landMaskData[idx]; // Red channel
+    return brightness < 128; // Land is dark, water is light
+  }
+
+  /**
+   * Load land mask for filtering ocean areas
+   */
+  function loadLandMask() {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        landMaskCanvas = document.createElement('canvas');
+        landMaskCanvas.width = img.width;
+        landMaskCanvas.height = img.height;
+        const ctx = landMaskCanvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        landMaskData = ctx.getImageData(0, 0, img.width, img.height).data;
+        resolve(true);
+      };
+      img.onerror = () => {
+        console.warn('Could not load land mask, showing all lines');
+        resolve(false);
+      };
+      img.src = LAND_MASK_URL;
+    });
+  }
+
+  /**
    * Calculate Julian Day for a date
    */
   function getJulianDay(date) {
@@ -106,31 +183,17 @@ const PrayerGlobe = (function() {
    */
   function getSunPosition(jd) {
     const T = (jd - 2451545.0) / 36525;
-
-    // Mean longitude of the sun
     let L0 = (280.46646 + 36000.76983 * T) % 360;
     if (L0 < 0) L0 += 360;
-
-    // Mean anomaly
     let M = (357.52911 + 35999.05029 * T) % 360;
     if (M < 0) M += 360;
     const MRad = DEG_TO_RAD * M;
-
-    // Equation of center
     const C = (1.914602 - 0.004817 * T) * Math.sin(MRad) + 0.019993 * Math.sin(2 * MRad);
-
-    // Sun's true longitude
     const sunLong = L0 + C;
-
-    // Obliquity of ecliptic
     const obliquity = 23.439 - 0.00000036 * (jd - 2451545.0);
-
-    // Sun's declination
     const declination = RAD_TO_DEG * Math.asin(
       Math.sin(DEG_TO_RAD * obliquity) * Math.sin(DEG_TO_RAD * sunLong)
     );
-
-    // Equation of time
     const y2 = Math.tan(DEG_TO_RAD * obliquity / 2) ** 2;
     const L0Rad = DEG_TO_RAD * L0;
     const eqTime = 4 * RAD_TO_DEG * (
@@ -138,7 +201,6 @@ const PrayerGlobe = (function() {
       4 * y2 * Math.sin(MRad) * Math.cos(2 * L0Rad) -
       0.5 * y2 * y2 * Math.sin(4 * L0Rad) - 1.25 * Math.sin(2 * MRad)
     );
-
     return { declination, eqTime };
   }
 
@@ -147,16 +209,12 @@ const PrayerGlobe = (function() {
    */
   function getTimeForAngle(lat, lng, angle, rising, declination, eqTime) {
     const noon = 12 - lng / 15 - eqTime / 60;
-
     const latRad = DEG_TO_RAD * lat;
     const decRad = DEG_TO_RAD * declination;
     const angleRad = DEG_TO_RAD * angle;
-
     const cosH = (Math.sin(angleRad) - Math.sin(latRad) * Math.sin(decRad)) /
                  (Math.cos(latRad) * Math.cos(decRad));
-
     if (cosH > 1 || cosH < -1) return null;
-
     const H = RAD_TO_DEG * Math.acos(cosH) / 15;
     return rising ? noon - H : noon + H;
   }
@@ -167,16 +225,11 @@ const PrayerGlobe = (function() {
   function calculateAsr(noon, lat, declination) {
     const latRad = DEG_TO_RAD * lat;
     const decRad = DEG_TO_RAD * declination;
-
-    // Shafi'i method: shadow = object height + noon shadow
     const angle = Math.atan(1 / (1 + Math.tan(Math.abs(latRad - decRad))));
     const asrAngle = RAD_TO_DEG * angle;
-
     const cosH = (Math.sin(DEG_TO_RAD * asrAngle) - Math.sin(latRad) * Math.sin(decRad)) /
                  (Math.cos(latRad) * Math.cos(decRad));
-
     if (cosH > 1 || cosH < -1) return null;
-
     const H = RAD_TO_DEG * Math.acos(cosH) / 15;
     return noon + H;
   }
@@ -188,10 +241,9 @@ const PrayerGlobe = (function() {
     const jd = getJulianDay(date);
     const { declination, eqTime } = getSunPosition(jd);
     const noon = 12 - lng / 15 - eqTime / 60;
-
     return {
       fajr: getTimeForAngle(lat, lng, -18, true, declination, eqTime),
-      dhuhr: noon + 2 / 60, // 2 minutes after solar noon
+      dhuhr: noon + 2 / 60,
       asr: calculateAsr(noon, lat, declination),
       maghrib: getTimeForAngle(lat, lng, -0.833, false, declination, eqTime),
       isha: getTimeForAngle(lat, lng, -17, false, declination, eqTime)
@@ -202,66 +254,32 @@ const PrayerGlobe = (function() {
    * Check if a location is currently praying
    */
   function getCurrentPrayer(lat, lng, utcDate) {
-    // Get local hour based on longitude
     const localHour = (utcDate.getUTCHours() + utcDate.getUTCMinutes() / 60 + lng / 15 + 24) % 24;
-
     const times = calculatePrayerTimes(lat, lng, utcDate);
-
     for (const [prayer, time] of Object.entries(times)) {
       if (time === null) continue;
-
-      // Normalize time to 0-24 range
       let prayerTime = time;
       while (prayerTime < 0) prayerTime += 24;
       while (prayerTime >= 24) prayerTime -= 24;
-
-      // Check if within prayer window
       if (localHour >= prayerTime && localHour < prayerTime + PRAYER_WINDOW_HOURS) {
         return prayer;
       }
     }
-
     return null;
   }
 
   /**
-   * Generate row segments around Mecca
+   * Create a great circle arc (geodesic) between two points
    */
-  function generateRowSegments(intervalKm, segmentAngle = 10) {
-    const segments = [];
-    const maxDistance = Math.PI * EARTH_RADIUS_KM; // Half circumference
-
-    for (let dist = intervalKm; dist < maxDistance; dist += intervalKm) {
-      for (let bearing = 0; bearing < 360; bearing += segmentAngle) {
-        const start = getPointOnCircle(MECCA.lat, MECCA.lng, dist, bearing);
-        const mid = getPointOnCircle(MECCA.lat, MECCA.lng, dist, bearing + segmentAngle / 2);
-        const end = getPointOnCircle(MECCA.lat, MECCA.lng, dist, bearing + segmentAngle);
-
-        segments.push({
-          distKm: dist,
-          start,
-          mid,
-          end,
-          bearing,
-          rowNumber: Math.floor(dist * 1000 / 1.2) // 1.2m row spacing
-        });
-      }
-    }
-
-    return segments;
-  }
-
-  /**
-   * Create arc geometry between two points
-   */
-  function createArcGeometry(start, end, segments = 8) {
+  function createGreatCircleArc(startLat, startLng, endLat, endLng, segments = 32, radius = 1.008) {
     const points = [];
-    const startVec = latLngToVector3(start.lat, start.lng, 1.008);
-    const endVec = latLngToVector3(end.lat, end.lng, 1.008);
+    const start = latLngToVector3(startLat, startLng, radius);
+    const end = latLngToVector3(endLat, endLng, radius);
 
     for (let i = 0; i <= segments; i++) {
       const t = i / segments;
-      const point = new THREE.Vector3().lerpVectors(startVec, endVec, t).normalize().multiplyScalar(1.008);
+      // Spherical interpolation (slerp)
+      const point = new THREE.Vector3().copy(start).lerp(end, t).normalize().multiplyScalar(radius);
       points.push(point);
     }
 
@@ -269,14 +287,188 @@ const PrayerGlobe = (function() {
   }
 
   /**
+   * Create concentric prayer row circle at distance from Mecca
+   */
+  function createPrayerRowCircle(distanceKm, segments = 72) {
+    const points = [];
+    const radius = 1.008;
+
+    for (let i = 0; i <= segments; i++) {
+      const bearing = (i / segments) * 360;
+      const point = getPointOnCircle(MECCA.lat, MECCA.lng, distanceKm, bearing);
+      points.push(latLngToVector3(point.lat, point.lng, radius));
+    }
+
+    return {
+      geometry: new THREE.BufferGeometry().setFromPoints(points),
+      points: points.map((_, i) => {
+        const bearing = (i / segments) * 360;
+        return getPointOnCircle(MECCA.lat, MECCA.lng, distanceKm, bearing);
+      })
+    };
+  }
+
+  /**
+   * Create Qibla direction arrow from a point toward Mecca
+   */
+  function createQiblaArrow(lat, lng, lengthKm = 200) {
+    const qibla = calculateQibla(lat, lng);
+    const endPoint = getPointOnCircle(lat, lng, lengthKm, qibla);
+
+    const points = [];
+    const segments = 8;
+    const radius = 1.01;
+
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments;
+      const interpLat = lat + (endPoint.lat - lat) * t;
+      const interpLng = lng + (endPoint.lng - lng) * t;
+      points.push(latLngToVector3(interpLat, interpLng, radius));
+    }
+
+    // Add arrowhead
+    const arrowSize = lengthKm * 0.3;
+    const leftPoint = getPointOnCircle(endPoint.lat, endPoint.lng, arrowSize, (qibla + 150) % 360);
+    const rightPoint = getPointOnCircle(endPoint.lat, endPoint.lng, arrowSize, (qibla + 210) % 360);
+
+    return {
+      line: new THREE.BufferGeometry().setFromPoints(points),
+      arrowLeft: new THREE.BufferGeometry().setFromPoints([
+        latLngToVector3(endPoint.lat, endPoint.lng, radius),
+        latLngToVector3(leftPoint.lat, leftPoint.lng, radius)
+      ]),
+      arrowRight: new THREE.BufferGeometry().setFromPoints([
+        latLngToVector3(endPoint.lat, endPoint.lng, radius),
+        latLngToVector3(rightPoint.lat, rightPoint.lng, radius)
+      ]),
+      midLat: lat,
+      midLng: lng
+    };
+  }
+
+  /**
+   * Initialize manual camera controls
+   */
+  function initManualControls() {
+    const domElement = renderer.domElement;
+
+    // Mouse events
+    domElement.addEventListener('mousedown', onPointerDown);
+    domElement.addEventListener('mousemove', onPointerMove);
+    domElement.addEventListener('mouseup', onPointerUp);
+    domElement.addEventListener('mouseleave', onPointerUp);
+    domElement.addEventListener('wheel', onWheel, { passive: false });
+
+    // Touch events
+    domElement.addEventListener('touchstart', onTouchStart, { passive: false });
+    domElement.addEventListener('touchmove', onTouchMove, { passive: false });
+    domElement.addEventListener('touchend', onTouchEnd);
+
+    // Initialize camera position
+    updateCameraPosition();
+  }
+
+  function onPointerDown(e) {
+    isDragging = true;
+    autoRotate = false;
+    previousMousePosition = { x: e.clientX, y: e.clientY };
+  }
+
+  function onPointerMove(e) {
+    if (!isDragging) return;
+
+    const deltaX = e.clientX - previousMousePosition.x;
+    const deltaY = e.clientY - previousMousePosition.y;
+
+    spherical.theta -= deltaX * 0.005;
+    spherical.phi += deltaY * 0.005;
+
+    // Clamp phi to avoid flipping
+    spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
+
+    previousMousePosition = { x: e.clientX, y: e.clientY };
+    updateCameraPosition();
+  }
+
+  function onPointerUp() {
+    isDragging = false;
+  }
+
+  function onWheel(e) {
+    e.preventDefault();
+    spherical.radius += e.deltaY * 0.002;
+    spherical.radius = Math.max(1.5, Math.min(6, spherical.radius));
+    updateCameraPosition();
+  }
+
+  let touchStartDistance = 0;
+  let lastTouchPosition = { x: 0, y: 0 };
+
+  function onTouchStart(e) {
+    e.preventDefault();
+    autoRotate = false;
+
+    if (e.touches.length === 1) {
+      isDragging = true;
+      lastTouchPosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    } else if (e.touches.length === 2) {
+      isDragging = false;
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      touchStartDistance = Math.sqrt(dx * dx + dy * dy);
+    }
+  }
+
+  function onTouchMove(e) {
+    e.preventDefault();
+
+    if (e.touches.length === 1 && isDragging) {
+      const deltaX = e.touches[0].clientX - lastTouchPosition.x;
+      const deltaY = e.touches[0].clientY - lastTouchPosition.y;
+
+      spherical.theta -= deltaX * 0.008;
+      spherical.phi += deltaY * 0.008;
+      spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
+
+      lastTouchPosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      updateCameraPosition();
+    } else if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      const delta = touchStartDistance - distance;
+      spherical.radius += delta * 0.01;
+      spherical.radius = Math.max(1.5, Math.min(6, spherical.radius));
+
+      touchStartDistance = distance;
+      updateCameraPosition();
+    }
+  }
+
+  function onTouchEnd() {
+    isDragging = false;
+  }
+
+  function updateCameraPosition() {
+    camera.position.x = spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta);
+    camera.position.y = spherical.radius * Math.cos(spherical.phi);
+    camera.position.z = spherical.radius * Math.sin(spherical.phi) * Math.cos(spherical.theta);
+    camera.lookAt(0, 0, 0);
+  }
+
+  /**
    * Initialize the 3D scene
    */
-  function init(containerId) {
+  async function init(containerId) {
     container = document.getElementById(containerId);
     if (!container) {
       console.error('Container not found:', containerId);
       return;
     }
+
+    // Load land mask first
+    await loadLandMask();
 
     // Scene
     scene = new THREE.Scene();
@@ -289,9 +481,8 @@ const PrayerGlobe = (function() {
       0.1,
       1000
     );
-    camera.position.set(0, 0, 3);
 
-    // Renderer with better settings
+    // Renderer
     renderer = new THREE.WebGLRenderer({
       antialias: true,
       alpha: true,
@@ -299,28 +490,10 @@ const PrayerGlobe = (function() {
     });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.domElement.style.touchAction = 'none';
     container.appendChild(renderer.domElement);
 
-    // Orbit controls - check if available
-    if (typeof THREE.OrbitControls !== 'undefined') {
-      controls = new THREE.OrbitControls(camera, renderer.domElement);
-      controls.enableDamping = true;
-      controls.dampingFactor = 0.08;
-      controls.rotateSpeed = 0.5;
-      controls.minDistance = 1.3;
-      controls.maxDistance = 6;
-      controls.enablePan = false;
-      controls.autoRotate = autoRotate;
-      controls.autoRotateSpeed = 0.3;
-      // Enable touch
-      controls.touches = {
-        ONE: THREE.TOUCH.ROTATE,
-        TWO: THREE.TOUCH.DOLLY_ROTATE
-      };
-    } else {
-      console.warn('OrbitControls not available, manual rotation disabled');
-    }
+    // Initialize manual controls (more reliable than OrbitControls)
+    initManualControls();
 
     // Create globe with Earth texture
     createGlobe();
@@ -328,15 +501,13 @@ const PrayerGlobe = (function() {
     // Create Mecca marker
     createMeccaMarker();
 
-    // Generate and create row segments
-    rowSegments = generateRowSegments(rowInterval);
-    createRowMeshes();
+    // Create prayer rows (concentric circles)
+    createPrayerRows();
 
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
     scene.add(ambientLight);
 
-    // Directional light (sun)
     const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
     sunLight.position.set(5, 3, 5);
     scene.add(sunLight);
@@ -355,7 +526,6 @@ const PrayerGlobe = (function() {
     const geometry = new THREE.SphereGeometry(1, 64, 64);
     const textureLoader = new THREE.TextureLoader();
 
-    // Create a basic material first (fallback)
     const fallbackMaterial = new THREE.MeshPhongMaterial({
       color: 0x2d5a87,
       shininess: 5
@@ -364,7 +534,6 @@ const PrayerGlobe = (function() {
     globe = new THREE.Mesh(geometry, fallbackMaterial);
     scene.add(globe);
 
-    // Load Earth texture
     textureLoader.load(
       EARTH_TEXTURE_URL,
       (texture) => {
@@ -374,24 +543,9 @@ const PrayerGlobe = (function() {
           shininess: 10,
           specular: new THREE.Color(0x333333)
         });
-
-        // Try to load bump map for extra detail
-        textureLoader.load(
-          EARTH_BUMP_URL,
-          (bumpTexture) => {
-            globe.material.bumpMap = bumpTexture;
-            globe.material.bumpScale = 0.02;
-            globe.material.needsUpdate = true;
-          },
-          undefined,
-          () => {} // Silently fail on bump map
-        );
       },
       undefined,
-      (error) => {
-        console.warn('Could not load Earth texture, using fallback:', error);
-        // Keep the fallback material
-      }
+      (error) => console.warn('Could not load Earth texture:', error)
     );
 
     // Atmosphere glow
@@ -408,7 +562,7 @@ const PrayerGlobe = (function() {
         varying vec3 vNormal;
         void main() {
           float intensity = pow(0.65 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.0);
-          gl_FragColor = vec4(0.3, 0.6, 1.0, 1.0) * intensity * 0.8;
+          gl_FragColor = vec4(0.3, 0.6, 1.0, 1.0) * intensity * 0.6;
         }
       `,
       blending: THREE.AdditiveBlending,
@@ -424,17 +578,16 @@ const PrayerGlobe = (function() {
    * Create Mecca marker
    */
   function createMeccaMarker() {
-    // Golden sphere at Kaaba
-    const markerGeometry = new THREE.SphereGeometry(0.025, 16, 16);
+    const markerGeometry = new THREE.SphereGeometry(0.03, 16, 16);
     const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xffd700 });
     meccaMarker = new THREE.Mesh(markerGeometry, markerMaterial);
 
-    const pos = latLngToVector3(MECCA.lat, MECCA.lng, 1.025);
+    const pos = latLngToVector3(MECCA.lat, MECCA.lng, 1.03);
     meccaMarker.position.copy(pos);
     scene.add(meccaMarker);
 
     // Glow effect
-    const glowGeometry = new THREE.SphereGeometry(0.05, 16, 16);
+    const glowGeometry = new THREE.SphereGeometry(0.06, 16, 16);
     const glowMaterial = new THREE.MeshBasicMaterial({
       color: 0xffd700,
       transparent: true,
@@ -446,58 +599,170 @@ const PrayerGlobe = (function() {
   }
 
   /**
-   * Create row meshes from segments
+   * Create prayer rows and Qibla direction lines
    */
-  function createRowMeshes() {
-    // Remove existing meshes
-    rowMeshes.forEach(mesh => scene.remove(mesh));
-    rowMeshes = [];
-
-    const defaultMaterial = new THREE.LineBasicMaterial({
-      color: 0x4a5568,
-      transparent: true,
-      opacity: 0.25
+  function createPrayerRows() {
+    // Clear existing
+    prayerLines.forEach(obj => {
+      if (obj.line) scene.remove(obj.line);
     });
+    prayerLines = [];
 
-    rowSegments.forEach((segment, index) => {
-      const geometry = createArcGeometry(segment.start, segment.end, 8);
-      const line = new THREE.Line(geometry, defaultMaterial.clone());
-      line.userData = { segmentIndex: index };
-      scene.add(line);
-      rowMeshes.push(line);
+    qiblaLines.forEach(obj => {
+      if (obj.line) scene.remove(obj.line);
+      if (obj.arrowLeft) scene.remove(obj.arrowLeft);
+      if (obj.arrowRight) scene.remove(obj.arrowRight);
     });
+    qiblaLines = [];
+
+    const maxDistance = Math.PI * EARTH_RADIUS_KM * 0.95; // Almost half circumference
+
+    // Create concentric prayer row circles
+    for (let dist = rowInterval; dist < maxDistance; dist += rowInterval) {
+      const segments = Math.max(36, Math.floor(72 * (dist / 5000)));
+
+      // Create points for this distance circle
+      const circlePoints = [];
+      for (let i = 0; i <= segments; i++) {
+        const bearing = (i / segments) * 360;
+        const point = getPointOnCircle(MECCA.lat, MECCA.lng, dist, bearing);
+        circlePoints.push({
+          lat: point.lat,
+          lng: point.lng,
+          bearing: bearing
+        });
+      }
+
+      // Create line segments, only for land portions
+      let currentSegmentPoints = [];
+
+      for (let i = 0; i < circlePoints.length; i++) {
+        const point = circlePoints[i];
+        const onLand = isOnLand(point.lat, point.lng);
+
+        if (onLand) {
+          currentSegmentPoints.push(latLngToVector3(point.lat, point.lng, 1.008));
+        }
+
+        // End current segment if we hit water or end of circle
+        if ((!onLand || i === circlePoints.length - 1) && currentSegmentPoints.length > 1) {
+          const geometry = new THREE.BufferGeometry().setFromPoints(currentSegmentPoints);
+          const material = new THREE.LineBasicMaterial({
+            color: 0x4a5568,
+            transparent: true,
+            opacity: 0.4,
+            linewidth: 2
+          });
+          const line = new THREE.Line(geometry, material);
+
+          // Store midpoint for prayer time calculation
+          const midIdx = Math.floor(currentSegmentPoints.length / 2);
+          const midPoint = circlePoints[Math.min(i - currentSegmentPoints.length + midIdx, circlePoints.length - 1)];
+
+          prayerLines.push({
+            line: line,
+            distKm: dist,
+            midLat: midPoint ? midPoint.lat : 0,
+            midLng: midPoint ? midPoint.lng : 0
+          });
+
+          scene.add(line);
+          currentSegmentPoints = [];
+        }
+      }
+    }
+
+    // Create Qibla direction arrows on land areas
+    const qiblaSpacing = 30; // degrees
+    for (let lat = -60; lat <= 70; lat += qiblaSpacing) {
+      for (let lng = -180; lng < 180; lng += qiblaSpacing) {
+        // Skip if on water
+        if (!isOnLand(lat, lng)) continue;
+
+        // Skip if too close to Mecca
+        const distToMecca = haversineDistance(lat, lng, MECCA.lat, MECCA.lng);
+        if (distToMecca < 500) continue;
+
+        const arrowLength = Math.min(400, distToMecca * 0.1);
+        const arrow = createQiblaArrow(lat, lng, arrowLength);
+
+        const material = new THREE.LineBasicMaterial({
+          color: 0x4a5568,
+          transparent: true,
+          opacity: 0.3
+        });
+
+        const line = new THREE.Line(arrow.line, material.clone());
+        const arrowLeft = new THREE.Line(arrow.arrowLeft, material.clone());
+        const arrowRight = new THREE.Line(arrow.arrowRight, material.clone());
+
+        scene.add(line);
+        scene.add(arrowLeft);
+        scene.add(arrowRight);
+
+        qiblaLines.push({
+          line: line,
+          arrowLeft: arrowLeft,
+          arrowRight: arrowRight,
+          midLat: lat,
+          midLng: lng
+        });
+      }
+    }
   }
 
   /**
-   * Update row colors based on current prayer times
+   * Update line colors based on current prayer times
    */
-  function updateRowColors() {
+  function updateLineColors() {
     // Reset prayer counts
     Object.keys(prayerCounts).forEach(p => prayerCounts[p] = 0);
 
-    rowSegments.forEach((segment, index) => {
-      const mesh = rowMeshes[index];
-      if (!mesh) return;
+    // Update prayer row circles
+    prayerLines.forEach(obj => {
+      if (!obj.line) return;
 
-      const prayer = getCurrentPrayer(segment.mid.lat, segment.mid.lng, currentTime);
+      const prayer = getCurrentPrayer(obj.midLat, obj.midLng, currentTime);
 
       if (prayer && (selectedPrayer === 'all' || selectedPrayer === prayer)) {
         const prayerInfo = PRAYERS[prayer];
-        mesh.material.color.setHex(prayerInfo.hex);
-        mesh.material.opacity = 0.85;
+        obj.line.material.color.setHex(prayerInfo.hex);
+        obj.line.material.opacity = 0.9;
         prayerCounts[prayer]++;
       } else {
-        mesh.material.color.setHex(0x4a5568);
-        mesh.material.opacity = 0.15;
+        obj.line.material.color.setHex(0x4a5568);
+        obj.line.material.opacity = 0.25;
+      }
+    });
+
+    // Update Qibla arrows
+    qiblaLines.forEach(obj => {
+      if (!obj.line) return;
+
+      const prayer = getCurrentPrayer(obj.midLat, obj.midLng, currentTime);
+
+      if (prayer && (selectedPrayer === 'all' || selectedPrayer === prayer)) {
+        const prayerInfo = PRAYERS[prayer];
+        obj.line.material.color.setHex(prayerInfo.hex);
+        obj.line.material.opacity = 0.8;
+        obj.arrowLeft.material.color.setHex(prayerInfo.hex);
+        obj.arrowLeft.material.opacity = 0.8;
+        obj.arrowRight.material.color.setHex(prayerInfo.hex);
+        obj.arrowRight.material.opacity = 0.8;
+      } else {
+        obj.line.material.color.setHex(0x4a5568);
+        obj.line.material.opacity = 0.2;
+        obj.arrowLeft.material.color.setHex(0x4a5568);
+        obj.arrowLeft.material.opacity = 0.2;
+        obj.arrowRight.material.color.setHex(0x4a5568);
+        obj.arrowRight.material.opacity = 0.2;
       }
     });
 
     // Dispatch event for UI update
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('prayerCountsUpdated', {
-        detail: { counts: prayerCounts, time: currentTime }
-      }));
-    }
+    window.dispatchEvent(new CustomEvent('prayerCountsUpdated', {
+      detail: { counts: prayerCounts, time: currentTime }
+    }));
   }
 
   /**
@@ -516,19 +781,20 @@ const PrayerGlobe = (function() {
     }
     lastFrameTime = timestamp;
 
-    // Update controls
-    if (controls) {
-      controls.update();
+    // Auto-rotate
+    if (autoRotate && !isDragging) {
+      spherical.theta += 0.001;
+      updateCameraPosition();
     }
 
-    // Update row colors every few frames for performance
+    // Update line colors every few frames
     if (Math.floor(timestamp / 100) !== Math.floor((timestamp - 16) / 100)) {
-      updateRowColors();
+      updateLineColors();
     }
 
     // Pulse Mecca glow
     if (meccaGlow) {
-      meccaGlow.scale.setScalar(1 + 0.15 * Math.sin(timestamp / 400));
+      meccaGlow.scale.setScalar(1 + 0.2 * Math.sin(timestamp / 400));
     }
 
     renderer.render(scene, camera);
@@ -539,67 +805,42 @@ const PrayerGlobe = (function() {
    */
   function onWindowResize() {
     if (!container || !camera || !renderer) return;
-
     camera.aspect = container.clientWidth / container.clientHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(container.clientWidth, container.clientHeight);
   }
 
-  /**
-   * Set simulation time
-   */
+  // Public API
   function setTime(date) {
     currentTime = new Date(date);
-    updateRowColors();
+    updateLineColors();
   }
 
-  /**
-   * Toggle play/pause
-   */
   function togglePlay() {
     isPlaying = !isPlaying;
     return isPlaying;
   }
 
-  /**
-   * Set simulation speed
-   */
   function setSpeed(newSpeed) {
     speed = newSpeed;
   }
 
-  /**
-   * Set row interval and regenerate
-   */
   function setRowInterval(intervalKm) {
     rowInterval = intervalKm;
-    rowSegments = generateRowSegments(rowInterval);
-    createRowMeshes();
-    updateRowColors();
+    createPrayerRows();
+    updateLineColors();
   }
 
-  /**
-   * Set selected prayer filter
-   */
   function setSelectedPrayer(prayer) {
     selectedPrayer = prayer;
-    updateRowColors();
+    updateLineColors();
   }
 
-  /**
-   * Toggle auto-rotation
-   */
   function toggleAutoRotate() {
     autoRotate = !autoRotate;
-    if (controls) {
-      controls.autoRotate = autoRotate;
-    }
     return autoRotate;
   }
 
-  /**
-   * Get current state
-   */
   function getState() {
     return {
       currentTime,
@@ -612,28 +853,15 @@ const PrayerGlobe = (function() {
     };
   }
 
-  /**
-   * Clean up resources
-   */
   function dispose() {
-    if (animationId) {
-      cancelAnimationFrame(animationId);
-    }
-
+    if (animationId) cancelAnimationFrame(animationId);
     if (renderer) {
       renderer.dispose();
       container.removeChild(renderer.domElement);
     }
-
     window.removeEventListener('resize', onWindowResize);
-
-    scene = null;
-    camera = null;
-    renderer = null;
-    controls = null;
   }
 
-  // Public API
   return {
     init,
     setTime,
@@ -648,7 +876,6 @@ const PrayerGlobe = (function() {
   };
 })();
 
-// Export for module systems
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = PrayerGlobe;
 }
