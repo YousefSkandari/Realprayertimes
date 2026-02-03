@@ -361,20 +361,6 @@
         </div>
       </div>
 
-      <!-- Row Interval Control -->
-      <div class="mb-4">
-        <div class="flex items-center justify-between mb-2">
-          <label class="text-sm text-white/80">Row Interval</label>
-          <span id="interval-value" class="text-sm font-medium text-prayer-fajr">500 km</span>
-        </div>
-        <input type="range" id="interval-slider" class="slider" min="200" max="2000" step="100" value="500">
-        <div class="flex justify-between text-xs text-white/40 mt-1">
-          <span>200 km</span>
-          <span>Denser rows</span>
-          <span>2000 km</span>
-        </div>
-      </div>
-
       <!-- Info -->
       <div class="text-xs text-white/40 border-t border-white/10 pt-3 mt-3">
         <p class="mb-1"><strong class="text-white/60">Mecca</strong> is marked with a golden sphere</p>
@@ -423,8 +409,6 @@
     // Sliders
     const speedSlider = document.getElementById('speed-slider');
     const speedValue = document.getElementById('speed-value');
-    const intervalSlider = document.getElementById('interval-slider');
-    const intervalValue = document.getElementById('interval-value');
 
     // Prayer filter buttons
     const filterButtons = document.querySelectorAll('[data-prayer]');
@@ -540,18 +524,6 @@
       const speed = parseInt(e.target.value);
       PrayerGlobe.setSpeed(speed);
       speedValue.textContent = `${speed} min/s`;
-    });
-
-    // Interval slider
-    intervalSlider.addEventListener('input', (e) => {
-      const interval = parseInt(e.target.value);
-      intervalValue.textContent = `${interval} km`;
-    });
-
-    // Apply interval on release (expensive operation)
-    intervalSlider.addEventListener('change', (e) => {
-      const interval = parseInt(e.target.value);
-      PrayerGlobe.setRowInterval(interval);
     });
 
     // Prayer filter buttons

@@ -37,7 +37,8 @@ const PrayerGlobe = (function() {
   let currentTime = new Date();
   let isPlaying = true;
   let speed = 60; // minutes per second
-  let rowInterval = 500; // km between rows
+  const ROW_SPACING_METERS = 1.2; // Actual prayer row spacing
+  const VISUAL_ROW_INTERVAL = 500; // km between visible rows (for rendering)
   let selectedPrayer = 'all';
   let prayerCounts = { fajr: 0, dhuhr: 0, asr: 0, maghrib: 0, isha: 0 };
   let container;
@@ -616,64 +617,74 @@ const PrayerGlobe = (function() {
     qiblaLines = [];
 
     const maxDistance = Math.PI * EARTH_RADIUS_KM * 0.95; // Almost half circumference
+    const lineRadius = 1.006; // Slightly above globe surface
 
     // Create concentric prayer row circles
-    for (let dist = rowInterval; dist < maxDistance; dist += rowInterval) {
-      const segments = Math.max(36, Math.floor(72 * (dist / 5000)));
+    for (let dist = VISUAL_ROW_INTERVAL; dist < maxDistance; dist += VISUAL_ROW_INTERVAL) {
+      // More segments for smoother circles, especially at larger distances
+      const segments = Math.max(72, Math.floor(144 * (dist / 10000)));
 
-      // Create points for this distance circle
+      // Create all points for this distance circle
       const circlePoints = [];
       for (let i = 0; i <= segments; i++) {
         const bearing = (i / segments) * 360;
         const point = getPointOnCircle(MECCA.lat, MECCA.lng, dist, bearing);
+        const onLand = isOnLand(point.lat, point.lng);
         circlePoints.push({
           lat: point.lat,
           lng: point.lng,
-          bearing: bearing
+          bearing: bearing,
+          onLand: onLand,
+          vec: latLngToVector3(point.lat, point.lng, lineRadius)
         });
       }
 
-      // Create line segments, only for land portions
-      let currentSegmentPoints = [];
+      // Find continuous land segments
+      let segmentStart = -1;
 
-      for (let i = 0; i < circlePoints.length; i++) {
-        const point = circlePoints[i];
-        const onLand = isOnLand(point.lat, point.lng);
+      for (let i = 0; i <= circlePoints.length; i++) {
+        const isLand = i < circlePoints.length && circlePoints[i].onLand;
 
-        if (onLand) {
-          currentSegmentPoints.push(latLngToVector3(point.lat, point.lng, 1.008));
-        }
+        if (isLand && segmentStart === -1) {
+          // Start of a new land segment
+          segmentStart = i;
+        } else if (!isLand && segmentStart !== -1) {
+          // End of land segment - create line
+          const segmentPoints = [];
+          for (let j = segmentStart; j < i; j++) {
+            segmentPoints.push(circlePoints[j].vec);
+          }
 
-        // End current segment if we hit water or end of circle
-        if ((!onLand || i === circlePoints.length - 1) && currentSegmentPoints.length > 1) {
-          const geometry = new THREE.BufferGeometry().setFromPoints(currentSegmentPoints);
-          const material = new THREE.LineBasicMaterial({
-            color: 0x4a5568,
-            transparent: true,
-            opacity: 0.4,
-            linewidth: 2
-          });
-          const line = new THREE.Line(geometry, material);
+          if (segmentPoints.length >= 2) {
+            const geometry = new THREE.BufferGeometry().setFromPoints(segmentPoints);
+            const material = new THREE.LineBasicMaterial({
+              color: 0x4a5568,
+              transparent: true,
+              opacity: 0.5
+            });
+            const line = new THREE.Line(geometry, material);
 
-          // Store midpoint for prayer time calculation
-          const midIdx = Math.floor(currentSegmentPoints.length / 2);
-          const midPoint = circlePoints[Math.min(i - currentSegmentPoints.length + midIdx, circlePoints.length - 1)];
+            // Calculate midpoint for prayer time
+            const midIdx = Math.floor((segmentStart + i - 1) / 2);
+            const midPoint = circlePoints[midIdx];
 
-          prayerLines.push({
-            line: line,
-            distKm: dist,
-            midLat: midPoint ? midPoint.lat : 0,
-            midLng: midPoint ? midPoint.lng : 0
-          });
+            prayerLines.push({
+              line: line,
+              distKm: dist,
+              midLat: midPoint.lat,
+              midLng: midPoint.lng
+            });
 
-          scene.add(line);
-          currentSegmentPoints = [];
+            scene.add(line);
+          }
+
+          segmentStart = -1;
         }
       }
     }
 
     // Create Qibla direction arrows on land areas
-    const qiblaSpacing = 30; // degrees
+    const qiblaSpacing = 25; // degrees - slightly denser
     for (let lat = -60; lat <= 70; lat += qiblaSpacing) {
       for (let lng = -180; lng < 180; lng += qiblaSpacing) {
         // Skip if on water
@@ -681,15 +692,15 @@ const PrayerGlobe = (function() {
 
         // Skip if too close to Mecca
         const distToMecca = haversineDistance(lat, lng, MECCA.lat, MECCA.lng);
-        if (distToMecca < 500) continue;
+        if (distToMecca < 400) continue;
 
-        const arrowLength = Math.min(400, distToMecca * 0.1);
+        const arrowLength = Math.min(500, distToMecca * 0.12);
         const arrow = createQiblaArrow(lat, lng, arrowLength);
 
         const material = new THREE.LineBasicMaterial({
           color: 0x4a5568,
           transparent: true,
-          opacity: 0.3
+          opacity: 0.35
         });
 
         const line = new THREE.Line(arrow.line, material.clone());
@@ -825,12 +836,6 @@ const PrayerGlobe = (function() {
     speed = newSpeed;
   }
 
-  function setRowInterval(intervalKm) {
-    rowInterval = intervalKm;
-    createPrayerRows();
-    updateLineColors();
-  }
-
   function setSelectedPrayer(prayer) {
     selectedPrayer = prayer;
     updateLineColors();
@@ -846,7 +851,6 @@ const PrayerGlobe = (function() {
       currentTime,
       isPlaying,
       speed,
-      rowInterval,
       selectedPrayer,
       prayerCounts,
       autoRotate
@@ -867,7 +871,6 @@ const PrayerGlobe = (function() {
     setTime,
     togglePlay,
     setSpeed,
-    setRowInterval,
     setSelectedPrayer,
     toggleAutoRotate,
     getState,
