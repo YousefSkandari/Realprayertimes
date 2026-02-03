@@ -81,6 +81,18 @@
           "sizes": "96x96"
         }
       ]
+    },
+    {
+      "name": "3D Prayer Globe",
+      "short_name": "Globe",
+      "description": "View the 3D global prayer visualization",
+      "url": "/globe.html",
+      "icons": [
+        {
+          "src": "icons/icon-96.png",
+          "sizes": "96x96"
+        }
+      ]
     }
   ],
   "related_applications": [],

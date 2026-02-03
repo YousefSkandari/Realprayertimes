@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="description" content="3D visualization showing the entire world praying toward Mecca, with prayer rows that illuminate based on Islamic prayer times.">
+  <meta name="theme-color" content="#0a0a1a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  <title>Global Prayer Visualization - 3D Globe</title>
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕌</text></svg>">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json">
+
+  <!-- Three.js from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            globe: {
+              bg: '#0a0a1a',
+              surface: 'rgba(15, 23, 42, 0.8)',
+            },
+            prayer: {
+              fajr: '#818cf8',
+              dhuhr: '#facc15',
+              asr: '#fb923c',
+              maghrib: '#f87171',
+              isha: '#c084fc',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0a0a1a;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    #globe-container {
+      width: 100%;
+      height: 100%;
+      position: fixed;
+      top: 0;
+      left: 0;
+    }
+
+    #globe-container canvas {
+      display: block;
+    }
+
+    .overlay {
+      position: fixed;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .overlay > * {
+      pointer-events: auto;
+    }
+
+    .glass {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .btn {
+      min-width: 44px;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 0.75rem;
+      transition: all 0.2s;
+    }
+
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .btn:active {
+      transform: scale(0.95);
+    }
+
+    .prayer-btn {
+      padding: 0.5rem 1rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      transition: all 0.2s;
+      border: 1px solid transparent;
+    }
+
+    .prayer-btn.active {
+      border-color: currentColor;
+    }
+
+    .slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(255, 255, 255, 0.2);
+      outline: none;
+    }
+
+    .slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #818cf8;
+      cursor: pointer;
+    }
+
+    .slider::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #818cf8;
+      cursor: pointer;
+      border: none;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .animate-pulse-slow {
+      animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    /* Mobile optimizations */
+    @media (max-width: 640px) {
+      .settings-panel {
+        left: 0.5rem;
+        right: 0.5rem;
+        bottom: 5rem;
+      }
+    }
+  </style>
+</head>
+<body class="bg-globe-bg text-white">
+
+  <!-- 3D Globe Container -->
+  <div id="globe-container"></div>
+
+  <!-- Top Left: Time Display -->
+  <div class="overlay top-4 left-4">
+    <div class="glass rounded-2xl p-4 min-w-[180px]">
+      <div class="text-xs text-white/60 uppercase tracking-wider mb-1">UTC Time</div>
+      <div id="time-display" class="text-2xl font-bold tabular-nums">00:00:00</div>
+      <div id="date-display" class="text-sm text-white/60 mt-1">Mon, Jan 1, 2024</div>
+    </div>
+  </div>
+
+  <!-- Top Right: Prayer Counts -->
+  <div class="overlay top-4 right-4">
+    <div class="glass rounded-2xl p-4">
+      <div class="text-xs text-white/60 uppercase tracking-wider mb-2">Praying Now</div>
+      <div id="prayer-counts" class="space-y-1 text-sm">
+        <div class="flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-prayer-fajr"></span>
+          <span class="flex-1">Fajr</span>
+          <span id="count-fajr" class="tabular-nums font-medium">0</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-prayer-dhuhr"></span>
+          <span class="flex-1">Dhuhr</span>
+          <span id="count-dhuhr" class="tabular-nums font-medium">0</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-prayer-asr"></span>
+          <span class="flex-1">Asr</span>
+          <span id="count-asr" class="tabular-nums font-medium">0</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-prayer-maghrib"></span>
+          <span class="flex-1">Maghrib</span>
+          <span id="count-maghrib" class="tabular-nums font-medium">0</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-prayer-isha"></span>
+          <span class="flex-1">Isha</span>
+          <span id="count-isha" class="tabular-nums font-medium">0</span>
+        </div>
+      </div>
+      <div class="mt-3 pt-3 border-t border-white/10">
+        <div class="flex items-center justify-between text-sm">
+          <span class="text-white/60">Total Segments</span>
+          <span id="count-total" class="tabular-nums font-bold text-prayer-fajr">0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Center: Control Bar -->
+  <div class="overlay bottom-4 left-4 right-4">
+    <div class="max-w-lg mx-auto">
+      <!-- Prayer Filter Buttons -->
+      <div class="glass rounded-2xl p-3 mb-3">
+        <div class="flex flex-wrap justify-center gap-2">
+          <button id="filter-all" class="prayer-btn active bg-white/10 text-white" data-prayer="all">All</button>
+          <button id="filter-fajr" class="prayer-btn text-prayer-fajr" data-prayer="fajr">Fajr</button>
+          <button id="filter-dhuhr" class="prayer-btn text-prayer-dhuhr" data-prayer="dhuhr">Dhuhr</button>
+          <button id="filter-asr" class="prayer-btn text-prayer-asr" data-prayer="asr">Asr</button>
+          <button id="filter-maghrib" class="prayer-btn text-prayer-maghrib" data-prayer="maghrib">Maghrib</button>
+          <button id="filter-isha" class="prayer-btn text-prayer-isha" data-prayer="isha">Isha</button>
+        </div>
+      </div>
+
+      <!-- Main Controls -->
+      <div class="glass rounded-2xl p-3">
+        <div class="flex items-center justify-center gap-2">
+          <!-- Back to Calculator -->
+          <a href="index.html" class="btn bg-white/10" title="Back to Calculator">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+            </svg>
+          </a>
+
+          <!-- Rewind -->
+          <button id="btn-rewind" class="btn bg-white/10" title="Rewind 1 hour">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0019 16V8a1 1 0 00-1.6-.8l-5.333 4zM4.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0011 16V8a1 1 0 00-1.6-.8l-5.334 4z"></path>
+            </svg>
+          </button>
+
+          <!-- Play/Pause -->
+          <button id="btn-play" class="btn bg-prayer-fajr text-white w-14 h-14 rounded-full" title="Play/Pause">
+            <svg id="icon-play" class="w-6 h-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <svg id="icon-pause" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+          </button>
+
+          <!-- Fast Forward -->
+          <button id="btn-forward" class="btn bg-white/10" title="Forward 1 hour">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.933 12.8a1 1 0 000-1.6L6.6 7.2A1 1 0 005 8v8a1 1 0 001.6.8l5.333-4zM19.933 12.8a1 1 0 000-1.6l-5.333-4A1 1 0 0013 8v8a1 1 0 001.6.8l5.333-4z"></path>
+            </svg>
+          </button>
+
+          <!-- Reset to Now -->
+          <button id="btn-now" class="btn bg-white/10" title="Reset to current time">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+          </button>
+
+          <!-- Settings Toggle -->
+          <button id="btn-settings" class="btn bg-white/10" title="Settings">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+            </svg>
+          </button>
+
+          <!-- Auto-rotate Toggle -->
+          <button id="btn-rotate" class="btn bg-white/10" title="Toggle auto-rotation">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Panel (Hidden by default) -->
+  <div id="settings-panel" class="overlay bottom-24 left-4 right-4 hidden settings-panel">
+    <div class="max-w-lg mx-auto glass rounded-2xl p-4">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-sm font-semibold uppercase tracking-wider">Settings</h3>
+        <button id="btn-close-settings" class="btn w-8 h-8 bg-white/10">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Speed Control -->
+      <div class="mb-4">
+        <div class="flex items-center justify-between mb-2">
+          <label class="text-sm text-white/80">Simulation Speed</label>
+          <span id="speed-value" class="text-sm font-medium text-prayer-fajr">60 min/s</span>
+        </div>
+        <input type="range" id="speed-slider" class="slider" min="1" max="180" value="60">
+        <div class="flex justify-between text-xs text-white/40 mt-1">
+          <span>1x</span>
+          <span>Real-time</span>
+          <span>180x</span>
+        </div>
+      </div>
+
+      <!-- Row Interval Control -->
+      <div class="mb-4">
+        <div class="flex items-center justify-between mb-2">
+          <label class="text-sm text-white/80">Row Interval</label>
+          <span id="interval-value" class="text-sm font-medium text-prayer-fajr">500 km</span>
+        </div>
+        <input type="range" id="interval-slider" class="slider" min="200" max="2000" step="100" value="500">
+        <div class="flex justify-between text-xs text-white/40 mt-1">
+          <span>200 km</span>
+          <span>Denser rows</span>
+          <span>2000 km</span>
+        </div>
+      </div>
+
+      <!-- Info -->
+      <div class="text-xs text-white/40 border-t border-white/10 pt-3 mt-3">
+        <p class="mb-1"><strong class="text-white/60">Mecca</strong> is marked with a golden sphere</p>
+        <p><strong class="text-white/60">Rows</strong> light up when it's prayer time at that location</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div id="loading-overlay" class="fixed inset-0 z-50 bg-globe-bg flex items-center justify-center">
+    <div class="text-center">
+      <div class="w-16 h-16 border-4 border-prayer-fajr border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+      <p class="text-white/60">Loading 3D Globe...</p>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/globe.js"></script>
+  <script>
+    // UI Elements
+    const timeDisplay = document.getElementById('time-display');
+    const dateDisplay = document.getElementById('date-display');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const settingsPanel = document.getElementById('settings-panel');
+
+    // Buttons
+    const btnPlay = document.getElementById('btn-play');
+    const btnRewind = document.getElementById('btn-rewind');
+    const btnForward = document.getElementById('btn-forward');
+    const btnNow = document.getElementById('btn-now');
+    const btnSettings = document.getElementById('btn-settings');
+    const btnCloseSettings = document.getElementById('btn-close-settings');
+    const btnRotate = document.getElementById('btn-rotate');
+
+    // Icons
+    const iconPlay = document.getElementById('icon-play');
+    const iconPause = document.getElementById('icon-pause');
+
+    // Sliders
+    const speedSlider = document.getElementById('speed-slider');
+    const speedValue = document.getElementById('speed-value');
+    const intervalSlider = document.getElementById('interval-slider');
+    const intervalValue = document.getElementById('interval-value');
+
+    // Prayer filter buttons
+    const filterButtons = document.querySelectorAll('[data-prayer]');
+
+    // Count displays
+    const countElements = {
+      fajr: document.getElementById('count-fajr'),
+      dhuhr: document.getElementById('count-dhuhr'),
+      asr: document.getElementById('count-asr'),
+      maghrib: document.getElementById('count-maghrib'),
+      isha: document.getElementById('count-isha'),
+      total: document.getElementById('count-total')
+    };
+
+    // Initialize globe
+    window.addEventListener('DOMContentLoaded', () => {
+      // Initialize the globe
+      PrayerGlobe.init('globe-container');
+
+      // Hide loading overlay after a brief delay
+      setTimeout(() => {
+        loadingOverlay.style.opacity = '0';
+        loadingOverlay.style.transition = 'opacity 0.5s';
+        setTimeout(() => {
+          loadingOverlay.style.display = 'none';
+        }, 500);
+      }, 1000);
+    });
+
+    // Update time display
+    window.addEventListener('prayerCountsUpdated', (e) => {
+      const { counts, time } = e.detail;
+
+      // Update time display
+      timeDisplay.textContent = time.toISOString().substr(11, 8);
+      dateDisplay.textContent = time.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+
+      // Update counts
+      let total = 0;
+      for (const [prayer, count] of Object.entries(counts)) {
+        if (countElements[prayer]) {
+          countElements[prayer].textContent = count;
+        }
+        total += count;
+      }
+      countElements.total.textContent = total;
+    });
+
+    // Play/Pause
+    btnPlay.addEventListener('click', () => {
+      const isPlaying = PrayerGlobe.togglePlay();
+      iconPlay.classList.toggle('hidden', isPlaying);
+      iconPause.classList.toggle('hidden', !isPlaying);
+    });
+
+    // Rewind 1 hour
+    btnRewind.addEventListener('click', () => {
+      const state = PrayerGlobe.getState();
+      const newTime = new Date(state.currentTime.getTime() - 3600000);
+      PrayerGlobe.setTime(newTime);
+    });
+
+    // Forward 1 hour
+    btnForward.addEventListener('click', () => {
+      const state = PrayerGlobe.getState();
+      const newTime = new Date(state.currentTime.getTime() + 3600000);
+      PrayerGlobe.setTime(newTime);
+    });
+
+    // Reset to now
+    btnNow.addEventListener('click', () => {
+      PrayerGlobe.setTime(new Date());
+    });
+
+    // Settings panel toggle
+    btnSettings.addEventListener('click', () => {
+      settingsPanel.classList.toggle('hidden');
+    });
+
+    btnCloseSettings.addEventListener('click', () => {
+      settingsPanel.classList.add('hidden');
+    });
+
+    // Auto-rotate toggle
+    btnRotate.addEventListener('click', () => {
+      const isRotating = PrayerGlobe.toggleAutoRotate();
+      btnRotate.classList.toggle('bg-prayer-fajr', isRotating);
+      btnRotate.classList.toggle('bg-white/10', !isRotating);
+    });
+
+    // Speed slider
+    speedSlider.addEventListener('input', (e) => {
+      const speed = parseInt(e.target.value);
+      PrayerGlobe.setSpeed(speed);
+      speedValue.textContent = `${speed} min/s`;
+    });
+
+    // Interval slider
+    intervalSlider.addEventListener('input', (e) => {
+      const interval = parseInt(e.target.value);
+      intervalValue.textContent = `${interval} km`;
+    });
+
+    // Apply interval on release (expensive operation)
+    intervalSlider.addEventListener('change', (e) => {
+      const interval = parseInt(e.target.value);
+      PrayerGlobe.setRowInterval(interval);
+    });
+
+    // Prayer filter buttons
+    filterButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        // Update active state
+        filterButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        // Update filter
+        const prayer = btn.dataset.prayer;
+        PrayerGlobe.setSelectedPrayer(prayer);
+      });
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      switch (e.key) {
+        case ' ':
+          e.preventDefault();
+          btnPlay.click();
+          break;
+        case 'ArrowLeft':
+          btnRewind.click();
+          break;
+        case 'ArrowRight':
+          btnForward.click();
+          break;
+        case 'n':
+          btnNow.click();
+          break;
+        case 's':
+          btnSettings.click();
+          break;
+        case 'r':
+          btnRotate.click();
+          break;
+        case 'Escape':
+          settingsPanel.classList.add('hidden');
+          break;
+      }
+    });
+
+    // Prevent double-tap zoom on mobile
+    document.addEventListener('touchend', (e) => {
+      if (e.target.tagName === 'BUTTON' || e.target.tagName === 'A') {
+        e.preventDefault();
+        e.target.click();
+      }
+    }, { passive: false });
+  </script>
+</body>
+</html>

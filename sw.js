@@ -4,23 +4,27 @@
  * Provides offline functionality and caching for the PWA.
  */
 
-const CACHE_NAME = 'fajr-calculator-v1';
-const STATIC_CACHE_NAME = 'fajr-static-v1';
+const CACHE_NAME = 'fajr-calculator-v2';
+const STATIC_CACHE_NAME = 'fajr-static-v2';
 
 // Files to cache for offline use
 const STATIC_FILES = [
   '/',
   '/index.html',
+  '/globe.html',
   '/css/styles.css',
   '/js/calculations.js',
   '/js/storage.js',
   '/js/app.js',
+  '/js/globe.js',
   '/manifest.json'
 ];
 
 // External resources to cache
 const EXTERNAL_RESOURCES = [
-  'https://cdn.tailwindcss.com'
+  'https://cdn.tailwindcss.com',
+  'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js',
+  'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js'
 ];
 
 /**
